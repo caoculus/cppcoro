@@ -31,8 +31,11 @@ namespace cppcoro
 	class static_thread_pool::thread_state
 	{
 	public:
-
-		explicit thread_state()
+		// gcc11 workaround: make_unique<thread_state[]> would use explicit constructor
+#if !CPPCORO_COMPILER_GCC || CPPCORO_COMPILER_GCC < 110000
+		explicit
+#endif
+			thread_state()
 			: m_localQueue(
 				std::make_unique<std::atomic<schedule_operation*>[]>(
 					local::initial_local_queue_size))
