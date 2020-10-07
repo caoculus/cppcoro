@@ -32,14 +32,14 @@ namespace cppcoro
 			{}
 
 			decltype(auto) await_ready()
-				noexcept(noexcept(static_cast<awaiter_t&&>(m_awaiter).await_ready()))
+				noexcept(noexcept(static_cast<awaiter_t&&>(std::declval<awaiter_t>()).await_ready()))
 			{
 				return static_cast<awaiter_t&&>(m_awaiter).await_ready();
 			}
 
 			template<typename PROMISE>
 			decltype(auto) await_suspend(coro::coroutine_handle<PROMISE> coro)
-				noexcept(noexcept(static_cast<awaiter_t&&>(m_awaiter).await_suspend(std::move(coro))))
+				noexcept(noexcept(static_cast<awaiter_t&&>(std::declval<awaiter_t>()).await_suspend(std::move(coro))))
 			{
 				return static_cast<awaiter_t&&>(m_awaiter).await_suspend(std::move(coro));
 			}
@@ -48,7 +48,7 @@ namespace cppcoro
 				typename AWAIT_RESULT = decltype(std::declval<awaiter_t>().await_resume()),
 				std::enable_if_t<std::is_void_v<AWAIT_RESULT>, int> = 0>
 			decltype(auto) await_resume()
-				noexcept(noexcept(std::invoke(static_cast<FUNC&&>(m_func))))
+				noexcept(noexcept(std::invoke(static_cast<FUNC&&>(std::declval<FUNC>()))))
 			{
 				static_cast<awaiter_t&&>(m_awaiter).await_resume();
 				return std::invoke(static_cast<FUNC&&>(m_func));
@@ -58,7 +58,7 @@ namespace cppcoro
 				typename AWAIT_RESULT = decltype(std::declval<awaiter_t>().await_resume()),
 				std::enable_if_t<!std::is_void_v<AWAIT_RESULT>, int> = 0>
 			decltype(auto) await_resume()
-				noexcept(noexcept(std::invoke(static_cast<FUNC&&>(m_func), static_cast<awaiter_t&&>(m_awaiter).await_resume())))
+				noexcept(noexcept(std::invoke(static_cast<FUNC&&>(std::declval<FUNC>()), static_cast<awaiter_t&&>(std::declval<awaiter_t>()).await_resume())))
 			{
 				return std::invoke(
 					static_cast<FUNC&&>(m_func),
