@@ -12,6 +12,7 @@
 
 #include <cppcoro/detail/coroutine.hpp>
 #include <cassert>
+#include <exception>
 
 namespace cppcoro
 {
