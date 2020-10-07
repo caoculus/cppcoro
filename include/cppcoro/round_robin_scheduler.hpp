@@ -7,7 +7,7 @@
 
 #include <cppcoro/config.hpp>
 
-#include <experimental/coroutine>
+#include <cppcoro/detail/coroutine.hpp>
 #include <array>
 #include <cassert>
 #include <algorithm>
@@ -44,8 +44,8 @@ namespace cppcoro
 				return false;
 			}
 
-			std::experimental::coroutine_handle<> await_suspend(
-				std::experimental::coroutine_handle<> awaitingCoroutine) noexcept
+			coro::coroutine_handle<> await_suspend(
+				coro::coroutine_handle<> awaitingCoroutine) noexcept
 			{
 				return m_scheduler.exchange_next(awaitingCoroutine);
 			}
@@ -104,8 +104,8 @@ namespace cppcoro
 
 	private:
 
-		std::experimental::coroutine_handle exchange_next(
-			std::experimental::coroutine_handle<> coroutine) noexcept
+		coro::coroutine_handle exchange_next(
+			coro::coroutine_handle<> coroutine) noexcept
 		{
 			auto coroutineToResume = std::exchange(
 				m_scheduler.m_coroutines[m_scheduler.m_index],
@@ -115,8 +115,8 @@ namespace cppcoro
 		}
 
 		size_t m_index;
-		const std::experimental::coroutine_handle<> m_noop;
-		std::array<std::experimental::coroutine_handle<>, N - 1> m_coroutines;
+		const coro::coroutine_handle<> m_noop;
+		std::array<coro::coroutine_handle<>, N - 1> m_coroutines;
 	};
 #endif
 }

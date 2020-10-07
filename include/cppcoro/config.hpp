@@ -150,4 +150,22 @@
 # define CPPCORO_CPU_CACHE_LINE 64
 #endif
 
+/// \def CPPCORO_COROUTINE_STANDARD
+/// Defined if <couroutine> header is available
+// __has_include supported on all compilers that have coroutine support
+#if __has_include(<coroutine>)
+# define CPPCORO_COROUTINE_STANDARD 1
+#else
+# define CPPCORO_COROUTINE_STANDARD 0
+# error "Your compiler does not support coroutines"
+#endif
+
+/// \def CPPCORO_FILESYSTEM_STANDARD
+/// Defined if <filesystem> header is available
+#if __has_include(<filesystem>)
+# define CPPCORO_FILESYSTEM_STANDARD 1
+#else
+# define CPPCORO_FILESYSTEM_STANDARD 0
+#endif
+
 #endif
