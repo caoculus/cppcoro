@@ -10,6 +10,8 @@ find_package_handle_standard_args(liburing DEFAULT_MSG
 
 mark_as_advanced(LIBURING_LIBRARY LIBURING_INCLUDE_DIR)
 
-add_library(liburing::liburing INTERFACE IMPORTED GLOBAL)
-target_link_libraries(liburing::liburing INTERFACE ${LIBURING_LIBRARY})
-target_include_directories(liburing::liburing INTERFACE ${LIBURING_INCLUDE_DIR})
+if(liburing_FOUND)
+  add_library(liburing::liburing INTERFACE IMPORTED GLOBAL)
+  target_link_libraries(liburing::liburing INTERFACE ${LIBURING_LIBRARY})
+  target_include_directories(liburing::liburing INTERFACE ${LIBURING_INCLUDE_DIR})
+endif()

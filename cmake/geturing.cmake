@@ -1,6 +1,7 @@
 find_package(liburing)
 if(NOT liburing_FOUND)
     include(ExternalProject)
+    message(STATUS "Using liburing as external project")
 
     set(LIBURING_TMP_INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/liburing)
     externalproject_add(_fetch_uring
