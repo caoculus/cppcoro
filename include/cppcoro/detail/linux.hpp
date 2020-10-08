@@ -114,7 +114,7 @@ namespace cppcoro
 				bool dequeue(void*& message, message_type& type, bool wait);
                 struct io_uring *handle() { return &ring_; }
                 int submit() noexcept;
-                io_uring_sqe *get_sqe() noexcept;
+                io_uring_sqe *get_sqe(bool lock = true) noexcept;
 
 			private:
 			    std::mutex m_inMux;

@@ -32,8 +32,8 @@ namespace cppcoro {
                 io_uring_queue_exit(&ring_);
             }
 
-            io_uring_sqe *uring_queue::get_sqe() noexcept {
-                m_inMux.lock();
+            io_uring_sqe *uring_queue::get_sqe(bool lock) noexcept {
+				if (lock) m_inMux.lock();
                 return io_uring_get_sqe(&ring_);
             }
 

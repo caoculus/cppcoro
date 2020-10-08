@@ -144,7 +144,8 @@ namespace cppcoro
 		void ensure_winsock_initialised();
 #elif CPPCORO_OS_LINUX
 		int submit() noexcept;
-        io_uring_sqe *get_sqe() noexcept;
+        io_uring_sqe *get_sqe(bool lock = true) noexcept;
+        struct io_uring *get_ring() noexcept;
 #endif
 
 	private:

@@ -527,8 +527,11 @@ void cppcoro::io_service::ensure_winsock_initialised()
 int cppcoro::io_service::submit() noexcept {
     return m_uq.submit();
 }
-io_uring_sqe *cppcoro::io_service::get_sqe() noexcept {
-    return m_uq.get_sqe();
+io_uring_sqe *cppcoro::io_service::get_sqe(bool lock) noexcept {
+    return m_uq.get_sqe(lock);
+}
+struct io_uring *cppcoro::io_service::get_ring() noexcept {
+    return m_uq.handle();
 }
 #endif  // CPPCORO_OS_WINNT
 

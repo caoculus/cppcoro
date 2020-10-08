@@ -14,6 +14,7 @@
 
 #include <cppcoro/detail/stdcoro.hpp>
 #include <arpa/inet.h>
+#include <sys/poll.h>
 #include <cassert>
 #include <cstring>
 #include <optional>
@@ -23,13 +24,18 @@ namespace cppcoro
 {
 	namespace detail
 	{
+		template <typename OPERATION>
+		concept ready_checkable_operation = requires(OPERATION &&operation) {
+            { operation.is_ready() } -> std::same_as<bool>;
+		};
+
 		class uring_operation_base
 		{
-			void submitt(io_uring_sqe* sqe)
+			auto submitt(io_uring_sqe* sqe)
 			{
 				m_message.m_ptr = m_awaitingCoroutine.address();
 				io_uring_sqe_set_data(sqe, &m_message);
-				m_ioService.submit();
+				return m_ioService.submit();
 			}
 
 		public:
@@ -47,7 +53,7 @@ namespace cppcoro
 				auto sqe = m_ioService.get_sqe();
 				io_uring_prep_readv(sqe, fd, &m_vec, 1, m_offset);
 				submitt(sqe);
-				return true;
+                return submitt(sqe) == 1;
 			}
 
 			bool try_start_write(int fd, const void* buffer, size_t size) noexcept
@@ -57,7 +63,7 @@ namespace cppcoro
 				auto sqe = m_ioService.get_sqe();
 				io_uring_prep_writev(sqe, fd, &m_vec, 1, m_offset);
 				submitt(sqe);
-				return true;
+                return submitt(sqe) == 1;
 			}
 
 			bool try_start_send(int fd, const void* buffer, size_t size) noexcept
@@ -65,7 +71,7 @@ namespace cppcoro
 				auto sqe = m_ioService.get_sqe();
 				io_uring_prep_send(sqe, fd, buffer, size, 0);
 				submitt(sqe);
-				return true;
+                return submitt(sqe) == 1;
 			}
 
 			bool try_start_sendto(
@@ -81,7 +87,7 @@ namespace cppcoro
 				auto sqe = m_ioService.get_sqe();
 				io_uring_prep_sendmsg(sqe, fd, &m_msghdr, 0);
 				submitt(sqe);
-				return true;
+                return submitt(sqe) == 1;
 			}
 
 			bool try_start_recv(int fd, void* buffer, size_t size, int flags) noexcept
@@ -89,7 +95,7 @@ namespace cppcoro
 				auto sqe = m_ioService.get_sqe();
 				io_uring_prep_recv(sqe, fd, buffer, size, flags);
 				submitt(sqe);
-				return true;
+                return submitt(sqe) == 1;
 			}
 
 			bool try_start_recvfrom(
@@ -105,7 +111,7 @@ namespace cppcoro
 				auto sqe = m_ioService.get_sqe();
 				io_uring_prep_recvmsg(sqe, fd, &m_msghdr, flags);
 				submitt(sqe);
-				return true;
+                return submitt(sqe) == 1;
 			}
 
 			bool try_start_connect(int fd, const void* to, size_t to_size) noexcept
@@ -114,7 +120,7 @@ namespace cppcoro
 				io_uring_prep_connect(
 					sqe, fd, reinterpret_cast<sockaddr*>(const_cast<void*>(to)), to_size);
 				submitt(sqe);
-				return true;
+                return submitt(sqe) == 1;
 			}
 
 			bool try_start_disconnect(int fd) noexcept
@@ -122,7 +128,7 @@ namespace cppcoro
 				auto sqe = m_ioService.get_sqe();
 				io_uring_prep_close(sqe, fd);
 				submitt(sqe);
-				return true;
+                return submitt(sqe) == 1;
 			}
 
 			bool try_start_accept(int fd, const void* to, socklen_t* to_size) noexcept
@@ -130,9 +136,29 @@ namespace cppcoro
 				auto sqe = m_ioService.get_sqe();
 				io_uring_prep_accept(
 					sqe, fd, reinterpret_cast<sockaddr*>(const_cast<void*>(to)), to_size, 0);
-				submitt(sqe);
-				return true;
+				return submitt(sqe) == 1;
 			}
+
+			bool try_start_nop() noexcept
+			{
+				auto sqe = m_ioService.get_sqe();
+				io_uring_prep_nop(sqe);
+				return submitt(sqe) == 1;
+			}
+
+            bool try_start_event_read(int event, uint64_t* data) noexcept
+            {
+                m_vec.iov_base = data;
+                m_vec.iov_len = sizeof(uint64_t);
+
+                auto sqe = m_ioService.get_sqe();
+				io_uring_register_eventfd(m_ioService.get_ring(), event);
+                io_uring_prep_poll_add(sqe, event, POLLIN);
+                sqe->flags |= IOSQE_IO_LINK;
+                sqe = m_ioService.get_sqe(false);
+                io_uring_prep_readv(sqe, event, &m_vec, 1, 0);
+                return submitt(sqe) == 2;
+            }
 
 			bool cancel_io()
 			{
@@ -170,7 +196,14 @@ namespace cppcoro
 			}
 
 		public:
-			bool await_ready() const noexcept { return false; }
+
+            bool await_ready() const noexcept
+			requires ready_checkable_operation<OPERATION>
+            { return static_cast<const OPERATION*>(this)->is_ready(); }
+
+			bool await_ready() const noexcept
+            requires (!ready_checkable_operation<OPERATION>)
+            { return false; }
 
 			CPPCORO_NOINLINE
 			bool await_suspend(stdcoro::coroutine_handle<> awaitingCoroutine)
