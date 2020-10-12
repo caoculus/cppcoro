@@ -11,6 +11,9 @@
 
 #if CPPCORO_OS_WINNT
 # include <cppcoro/detail/win32.hpp>
+#else
+# include <cppcoro/detail/linux.hpp>
+# include <cppcoro/detail/linux_uring_operation.hpp>
 #endif
 
 #include <optional>
@@ -135,12 +138,16 @@ namespace cppcoro
 #if CPPCORO_OS_WINNT
 		detail::win32::handle_t native_iocp_handle() noexcept;
 		void ensure_winsock_initialised();
+#else
+		inline detail::lnx::io_queue& ioQueue() noexcept { return m_ioQueue; }
 #endif
 
 	private:
 
+#if CPPCORO_OS_WINNT
 		class timer_thread_state;
 		class timer_queue;
+#endif
 
 		friend class schedule_operation;
 		friend class timed_schedule_operation;
@@ -156,7 +163,9 @@ namespace cppcoro
 
 		void post_wake_up_event() noexcept;
 
+#if CPPCORO_OS_WINNT
 		timer_thread_state* ensure_timer_thread_started();
+#endif
 
 		static constexpr std::uint32_t stop_requested_flag = 1;
 		static constexpr std::uint32_t active_thread_count_increment = 2;
@@ -172,6 +181,8 @@ namespace cppcoro
 
 		std::atomic<bool> m_winsockInitialised;
 		std::mutex m_winsockInitialisationMutex;
+#else
+		detail::lnx::io_queue m_ioQueue;
 #endif
 
 		// Head of a linked-list of schedule operations that are
@@ -179,10 +190,13 @@ namespace cppcoro
 		// completion port (eg. due to low memory).
 		std::atomic<schedule_operation*> m_scheduleOperations;
 
+#if CPPCORO_OS_WINNT
 		std::atomic<timer_thread_state*> m_timerState;
+#endif
 
 	};
 
+#if CCPPCORO_OS_WINNT
 	class io_service::schedule_operation
 	{
 	public:
@@ -243,6 +257,74 @@ namespace cppcoro
 		std::atomic<std::uint32_t> m_refCount;
 
 	};
+#else
+    class io_service::schedule_operation
+        : public detail::uring_operation<io_service::schedule_operation>
+    {
+    public:
+        schedule_operation(
+            io_service& service) noexcept
+            : detail::uring_operation<io_service::schedule_operation>(service.ioQueue())
+            {}
+
+    private:
+        friend detail::uring_operation<io_service::schedule_operation>;
+
+        bool try_start() noexcept {
+            return try_start_nop();
+        }
+    };
+
+    class io_service::timed_schedule_operation
+		: public detail::uring_operation_cancellable<io_service::timed_schedule_operation>
+	{
+	public:
+		timed_schedule_operation(
+			io_service& service,
+            std::chrono::high_resolution_clock::time_point resumeTime, cppcoro::cancellation_token cancellationToken) noexcept
+			: detail::uring_operation_cancellable<io_service::timed_schedule_operation>(service.ioQueue(), std::move(cancellationToken))
+			    , m_resumeTime{std::move(resumeTime)} {}
+
+	private:
+        friend detail::uring_operation_cancellable<io_service::timed_schedule_operation>;
+
+		bool try_start() noexcept {
+			auto now = std::chrono::high_resolution_clock::now();
+			if(m_resumeTime > now)
+			{
+				auto ts = detail::lnx::duration_to_kernel_timespec(m_resumeTime - now);
+				return try_start_timeout(&ts, false);
+			}
+			else
+			{
+				m_message.result = -ETIME;
+				return false;
+			}
+			// This should work but it does not
+			// looks like IORING_TIMEOUT_ABS is broken
+//			auto ts = detail::lnx::time_point_to_kernel_timespec(m_resumeTime);
+//			return try_start_timeout(&ts, true);
+		}
+
+		void cancel() noexcept {
+			if (m_awaitingCoroutine.address() != nullptr)
+			{
+				cancel_io();
+			}
+		}
+
+        std::chrono::high_resolution_clock::time_point m_resumeTime;
+	public:
+
+		// catch ETIME
+        decltype(auto) await_resume() {
+            if (m_message.result != -ETIME)
+            {
+                detail::uring_operation_cancellable<io_service::timed_schedule_operation>::await_resume();
+            }
+        }
+	};
+#endif
 
 	class io_work_scope
 	{

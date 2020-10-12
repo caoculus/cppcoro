@@ -99,6 +99,7 @@ set(sources
 	auto_reset_event.cpp
 	spin_wait.cpp
 	spin_mutex.cpp
+	io_service.cpp
 )
 
 if(WIN32)
@@ -124,7 +125,6 @@ if(WIN32)
 
     set(win32Sources
         win32.cpp
-        io_service.cpp
         file.cpp
         readable_file.cpp
         writable_file.cpp
@@ -144,6 +144,19 @@ if(WIN32)
         socket_recv_from_operation.cpp
     )
     list(APPEND sources ${win32Sources})
+else()
+	find_package(liburing REQUIRED)
+	list(APPEND libraries liburing::liburing)
+
+	set(linuxDetailIncludes
+		linux.hpp
+		)
+	list(TRANSFORM linuxDetailIncludes PREPEND "${PROJECT_SOURCE_DIR}/include/cppcoro/detail/")
+	list(APPEND detailIncludes ${linuxDetailIncludes})
+	set(linuxSources
+		linux.cpp
+		)
+	list(APPEND sources ${linuxSources})
 endif()
 
 add_library(cppcoro
@@ -160,7 +173,7 @@ target_include_directories(cppcoro PUBLIC
 target_compile_features(cppcoro PUBLIC cxx_std_20)
 
 find_package(CppcoroCoroutines REQUIRED)
-target_link_libraries(cppcoro PUBLIC cppcoro::coroutines)
+target_link_libraries(cppcoro PUBLIC cppcoro::coroutines ${libraries})
 
 install(TARGETS cppcoro EXPORT cppcoroTargets
 	LIBRARY DESTINATION lib

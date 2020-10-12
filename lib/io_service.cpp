@@ -80,6 +80,8 @@ namespace
 #endif
 }
 
+
+#if CPPCORO_OS_WINNT
 /// \brief
 /// A queue of pending timers that supports efficiently determining
 /// and dequeueing the earliest-due timers in the queue.
@@ -320,8 +322,7 @@ public:
 
 	std::thread m_thread;
 };
-
-
+#endif
 
 cppcoro::io_service::io_service()
 	: io_service(0)
@@ -335,9 +336,9 @@ cppcoro::io_service::io_service(std::uint32_t concurrencyHint)
 	, m_iocpHandle(create_io_completion_port(concurrencyHint))
 	, m_winsockInitialised(false)
 	, m_winsockInitialisationMutex()
+	, m_timerState(nullptr)
 #endif
 	, m_scheduleOperations(nullptr)
-	, m_timerState(nullptr)
 {
 }
 
@@ -346,9 +347,9 @@ cppcoro::io_service::~io_service()
 	assert(m_scheduleOperations.load(std::memory_order_relaxed) == nullptr);
 	assert(m_threadState.load(std::memory_order_relaxed) < active_thread_count_increment);
 
-	delete m_timerState.load(std::memory_order_relaxed);
-
 #if CPPCORO_OS_WINNT
+    delete m_timerState.load(std::memory_order_relaxed);
+
 	if (m_winsockInitialised.load(std::memory_order_relaxed))
 	{
 		// TODO: Should we be checking return-code here?
@@ -471,12 +472,12 @@ void cppcoro::io_service::notify_work_finished() noexcept
 	}
 }
 
+#if CPPCORO_OS_WINNT
 cppcoro::detail::win32::handle_t cppcoro::io_service::native_iocp_handle() noexcept
 {
 	return m_iocpHandle.handle();
 }
 
-#if CPPCORO_OS_WINNT
 
 void cppcoro::io_service::ensure_winsock_initialised()
 {
@@ -673,6 +674,49 @@ bool cppcoro::io_service::try_process_one_event(bool waitForEvent)
 			};
 		}
 	}
+#else
+    while (true)
+    {
+        try_reschedule_overflow_operations();
+        detail::lnx::io_message *message = nullptr;
+
+        bool status = false;
+
+        try
+        {
+            status = m_ioQueue.dequeue(message, waitForEvent);
+        }
+        catch (std::system_error& err)
+        {
+            if (err.code() == std::errc::interrupted &&
+                (m_threadState.load(std::memory_order_relaxed) & stop_requested_flag) == 0)
+            {
+                return false;
+            }
+            else
+            {
+                throw err;
+            }
+        }
+
+        if (!status)
+        {
+            return false;
+        }
+
+        if (message != nullptr && message->awaitingCoroutine != nullptr)
+        {
+            coroutine_handle<>::from_address(reinterpret_cast<void*>(message->awaitingCoroutine))
+				.resume();
+        }
+
+        if (is_stop_requested())
+        {
+            return false;
+        }
+        return true;
+
+    }
 #endif
 }
 
@@ -686,8 +730,14 @@ void cppcoro::io_service::post_wake_up_event() noexcept
 	// in the queue next time they check anyway and thus wake-up.
 	(void)::PostQueuedCompletionStatus(m_iocpHandle.handle(), 0, 0, nullptr);
 #endif
+	static detail::lnx::io_message nop;
+    auto sqe = m_ioQueue.get_sqe();
+    io_uring_prep_nop(sqe);
+    io_uring_sqe_set_data(sqe, &nop);
+	assert(m_ioQueue.submit() == 1);
 }
 
+#if CPPCORO_OS_WINNT
 cppcoro::io_service::timer_thread_state*
 cppcoro::io_service::ensure_timer_thread_started()
 {
@@ -1018,3 +1068,4 @@ void cppcoro::io_service::timed_schedule_operation::await_resume()
 	m_cancellationRegistration.reset();
 	m_cancellationToken.throw_if_cancellation_requested();
 }
+#endif
