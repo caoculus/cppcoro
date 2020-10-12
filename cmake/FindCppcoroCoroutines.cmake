@@ -40,5 +40,3 @@ elseif(Coroutines_ts_SUPPORTS_GNU_FLAG)
 elseif(Coroutines_SUPPORTS_GNU_FLAG)
     target_compile_options(cppcoro::coroutines INTERFACE -fcoroutines)
 endif()
-
-target_compile_options(cppcoro::coroutines INTERFACE ${Coroutines_EXTRA_FLAGS})
