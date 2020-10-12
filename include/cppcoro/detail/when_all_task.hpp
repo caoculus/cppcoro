@@ -13,6 +13,8 @@
 #include <cppcoro/coroutine.hpp>
 #include <cassert>
 
+#include <stdexcept>
+
 namespace cppcoro
 {
 	namespace detail
