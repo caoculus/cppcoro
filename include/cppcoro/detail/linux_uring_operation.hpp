@@ -46,7 +46,11 @@ namespace cppcoro
 				m_vec.iov_len = size;
 				auto sqe = m_ioQueue.get_sqe();
 				io_uring_prep_readv(sqe, fd, &m_vec, 1, m_offset);
-				return submitt(sqe) == 1;
+                if (auto res = submitt(sqe); res < 0) {
+                    m_message.result = res;
+                    return false;
+                }
+                return true;
 			}
 
 			bool try_start_write(int fd, const void* buffer, size_t size) noexcept
@@ -55,14 +59,22 @@ namespace cppcoro
 				m_vec.iov_len = size;
 				auto sqe = m_ioQueue.get_sqe();
 				io_uring_prep_writev(sqe, fd, &m_vec, 1, m_offset);
-                return submitt(sqe) == 1;
+                if (auto res = submitt(sqe); res < 0) {
+                    m_message.result = res;
+                    return false;
+                }
+                return true;
 			}
 
 			bool try_start_send(int fd, const void* buffer, size_t size) noexcept
 			{
 				auto sqe = m_ioQueue.get_sqe();
 				io_uring_prep_send(sqe, fd, buffer, size, 0);
-                return submitt(sqe) == 1;
+                if (auto res = submitt(sqe); res < 0) {
+                    m_message.result = res;
+                    return false;
+                }
+                return true;
 			}
 
 			bool try_start_sendto(
@@ -77,14 +89,22 @@ namespace cppcoro
 				m_msghdr.msg_iovlen = 1;
 				auto sqe = m_ioQueue.get_sqe();
 				io_uring_prep_sendmsg(sqe, fd, &m_msghdr, 0);
-                return submitt(sqe) == 1;
+                if (auto res = submitt(sqe); res < 0) {
+                    m_message.result = res;
+                    return false;
+                }
+                return true;
 			}
 
 			bool try_start_recv(int fd, void* buffer, size_t size, int flags) noexcept
 			{
 				auto sqe = m_ioQueue.get_sqe();
 				io_uring_prep_recv(sqe, fd, buffer, size, flags);
-                return submitt(sqe) == 1;
+                if (auto res = submitt(sqe); res < 0) {
+                    m_message.result = res;
+                    return false;
+                }
+                return true;
 			}
 
 			bool try_start_recvfrom(
@@ -99,7 +119,11 @@ namespace cppcoro
 				m_msghdr.msg_iovlen = 1;
 				auto sqe = m_ioQueue.get_sqe();
 				io_uring_prep_recvmsg(sqe, fd, &m_msghdr, flags);
-                return submitt(sqe) == 1;
+                if (auto res = submitt(sqe); res < 0) {
+                    m_message.result = res;
+                    return false;
+                }
+                return true;
 			}
 
 			bool try_start_connect(int fd, const void* to, size_t to_size) noexcept
@@ -107,14 +131,22 @@ namespace cppcoro
 				auto sqe = m_ioQueue.get_sqe();
 				io_uring_prep_connect(
 					sqe, fd, reinterpret_cast<sockaddr*>(const_cast<void*>(to)), to_size);
-                return submitt(sqe) == 1;
+                if (auto res = submitt(sqe); res < 0) {
+                    m_message.result = res;
+                    return false;
+                }
+                return true;
 			}
 
 			bool try_start_disconnect(int fd) noexcept
 			{
 				auto sqe = m_ioQueue.get_sqe();
 				io_uring_prep_close(sqe, fd);
-                return submitt(sqe) == 1;
+                if (auto res = submitt(sqe); res < 0) {
+                    m_message.result = res;
+                    return false;
+                }
+                return true;
 			}
 
 			bool try_start_accept(int fd, const void* to, socklen_t* to_size) noexcept
@@ -122,19 +154,31 @@ namespace cppcoro
 				auto sqe = m_ioQueue.get_sqe();
 				io_uring_prep_accept(
 					sqe, fd, reinterpret_cast<sockaddr*>(const_cast<void*>(to)), to_size, 0);
-                return submitt(sqe) == 1;
+                if (auto res = submitt(sqe); res < 0) {
+                    m_message.result = res;
+                    return false;
+                }
+                return true;
 			}
 
 			bool try_start_timeout(__kernel_timespec *ts, bool absolute = false) noexcept {
                 auto sqe = m_ioQueue.get_sqe();
 				io_uring_prep_timeout(sqe, ts, 0, absolute ? IORING_TIMEOUT_ABS : 0);
-				return submitt(sqe) == 1;
+				if (auto res = submitt(sqe); res < 0) {
+				    m_message.result = res;
+				    return false;
+				}
+				return true;
 			}
 
             bool try_start_nop() noexcept {
                 auto sqe = m_ioQueue.get_sqe();
                 io_uring_prep_nop(sqe);
-                return submitt(sqe) == 1;
+                if (auto res = submitt(sqe); res < 0) {
+                    m_message.result = res;
+                    return false;
+                }
+                return true;
             }
 
 			bool cancel_io()
@@ -143,7 +187,11 @@ namespace cppcoro
 				io_uring_prep_cancel(sqe, &m_message, 0);
 				io_uring_sqe_set_data(sqe, &m_message);
                 m_message.result = -ECANCELED;
-				return m_ioQueue.submit() == 1; // dont use uring_operation_base::submit here !
+                if (auto res = submitt(sqe); res < 0) {
+                    m_message.result = res;
+                    return false;
+                }
+                return true;
 			}
 
 			std::size_t get_result()
