@@ -50,7 +50,8 @@ namespace cppcoro::detail::lnx
 		else
 		{
 			msg = reinterpret_cast<detail::lnx::io_message*>(io_uring_cqe_get_data(cqe));
-			if (msg != nullptr)
+            if (msg != nullptr
+                && msg->result == -1) // manually set result eg.: -ECANCEL
 			{
 				msg->result = cqe->res;
 			}

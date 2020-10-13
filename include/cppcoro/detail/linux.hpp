@@ -25,9 +25,6 @@
 #include <mutex>
 #include <cppcoro/coroutine.hpp>
 
-#include <iostream> // TODO remove me !
-#include <iomanip>
-
 namespace cppcoro
 {
 	namespace detail

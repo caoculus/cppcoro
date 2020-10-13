@@ -17,7 +17,7 @@
 namespace cppcoro::detail::lnx
 {
     template<typename _Rep, typename _Period>
-    constexpr __kernel_timespec duration_to_kernel_timespec(std::chrono::duration<_Rep, _Period> dur)
+    constexpr __kernel_timespec duration_to_eventspec(std::chrono::duration<_Rep, _Period> dur)
     {
         using namespace std::chrono;
 
@@ -29,7 +29,7 @@ namespace cppcoro::detail::lnx
     }
 
     template<typename _Clock, typename _Dur>
-    constexpr __kernel_timespec time_point_to_kernel_timespec(std::chrono::time_point<_Clock, _Dur> tp)
+    constexpr __kernel_timespec time_point_to_eventspec(std::chrono::time_point<_Clock, _Dur> tp)
     {
         using namespace std::chrono;
 

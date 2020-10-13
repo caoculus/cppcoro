@@ -5,9 +5,7 @@
 #ifndef CPPCORO_DETAIL_LINUX_URING_OPERATION_HPP_INCLUDED
 #define CPPCORO_DETAIL_LINUX_URING_OPERATION_HPP_INCLUDED
 
-#include <cppcoro/cancellation_registration.hpp>
-#include <cppcoro/cancellation_token.hpp>
-#include <cppcoro/operation_cancelled.hpp>
+#include <cppcoro/detail/linux_base_operation_cancellable.hpp>
 
 #include <cppcoro/io_service.hpp>
 #include <cppcoro/detail/linux.hpp>
@@ -143,6 +141,8 @@ namespace cppcoro
 			{
 				auto sqe = m_ioQueue.get_sqe();
 				io_uring_prep_cancel(sqe, &m_message, 0);
+				io_uring_sqe_set_data(sqe, &m_message);
+                m_message.result = -ECANCELED;
 				return m_ioQueue.submit() == 1; // dont use uring_operation_base::submit here !
 			}
 
@@ -188,193 +188,13 @@ namespace cppcoro
 			decltype(auto) await_resume() { return static_cast<OPERATION*>(this)->get_result(); }
 		};
 
-		template<typename OPERATION>
-		class uring_operation_cancellable : protected uring_operation_base
-		{
-			// ERROR_OPERATION_ABORTED value from <errno.h>
-			static constexpr int error_operation_aborted = -ECANCELED;
-
-		protected:
-			uring_operation_cancellable(lnx::io_queue& ioQueue, cancellation_token&& ct) noexcept
-				: uring_operation_base(ioQueue, 0)
-				, m_state(ct.is_cancellation_requested() ? state::completed : state::not_started)
-				, m_cancellationToken(std::move(ct))
-			{
-				m_message.result = error_operation_aborted;
-			}
-
-			uring_operation_cancellable(
-				lnx::io_queue& ioQueue, size_t offset, cancellation_token&& ct) noexcept
-				: uring_operation_base(ioQueue, offset)
-				, m_state(ct.is_cancellation_requested() ? state::completed : state::not_started)
-				, m_cancellationToken(std::move(ct))
-			{
-				m_message.result = error_operation_aborted;
-			}
-
-		public:
-			bool await_ready() const noexcept
-			{
-				return m_state.load(std::memory_order_relaxed) == state::completed;
-			}
-
-			CPPCORO_NOINLINE
-			bool await_suspend(coroutine_handle<> awaitingCoroutine)
-			{
-				static_assert(std::is_base_of_v<uring_operation_cancellable, OPERATION>);
-
-				m_awaitingCoroutine = awaitingCoroutine;
-
-				// TRICKY: Register cancellation callback before starting the operation
-				// in case the callback registration throws due to insufficient
-				// memory. We need to make sure that the logic that occurs after
-				// starting the operation is noexcept, otherwise we run into the
-				// problem of not being able to cancel the started operation and
-				// the dilemma of what to do with the exception.
-				//
-				// However, doing this means that the cancellation callback may run
-				// prior to returning below so in the case that cancellation may
-				// occur we defer setting the state to 'started' until after
-				// the operation has finished starting. The cancellation callback
-				// will only attempt to request cancellation of the operation with
-				// CancelIoEx() once the state has been set to 'started'.
-				if (m_cancellationToken.is_cancellation_requested())
-				{
-					return false;
-				}
-
-				const bool canBeCancelled = m_cancellationToken.can_be_cancelled();
-				m_state.store(state::started, std::memory_order_relaxed);
-
-				// Now start the operation.
-				const bool willCompleteAsynchronously = static_cast<OPERATION*>(this)->try_start();
-				if (!willCompleteAsynchronously)
-				{
-					// Operation completed synchronously, resume awaiting coroutine immediately.
-					return false;
-				}
-
-				if (canBeCancelled)
-				{
-					// Need to flag that the operation has finished starting now.
-
-					// However, the operation may have completed concurrently on
-					// another thread, transitioning directly from not_started -> complete.
-					// Or it may have had the cancellation callback execute and transition
-					// from not_started -> cancellation_requested. We use a compare-exchange
-					// to determine a winner between these potential racing cases.
-					state oldState = state::not_started;
-					if (!m_state.compare_exchange_strong(
-							oldState,
-							state::started,
-							std::memory_order_release,
-							std::memory_order_acquire))
-					{
-						if (oldState == state::cancellation_requested)
-						{
-							// Request the operation be cancelled.
-							// Note that it may have already completed on a background
-							// thread by now so this request for cancellation may end up
-							// being ignored.
-							static_cast<OPERATION*>(this)->cancel();
-
-							if (!m_state.compare_exchange_strong(
-									oldState,
-									state::started,
-									std::memory_order_release,
-									std::memory_order_acquire))
-							{
-								assert(oldState == state::completed);
-								return false;
-							}
-						}
-						else
-						{
-							m_cancellationRegistration.emplace(
-								std::move(m_cancellationToken), [this] {
-									m_state.store(
-										state::cancellation_requested, std::memory_order_seq_cst);
-									static_cast<OPERATION*>(this)->cancel();
-								});
-							assert(oldState == state::started);
-							return true;
-						}
-					}
-				}
-
-				return true;
-			}
-
-			decltype(auto) await_resume()
-			{
-				if (m_message.result == error_operation_aborted)
-				{
-					throw operation_cancelled{};
-				}
-				else if (m_message.result < 0)
-				{
-					if (m_message.result == -EINTR &&
-						m_state.load(std::memory_order_acquire) == state::cancellation_requested)
-					{
-						throw operation_cancelled{};
-					}
-					throw std::system_error{ -m_message.result, std::system_category() };
-				}
-
-				return static_cast<OPERATION*>(this)->get_result();
-			}
-
-		private:
-			enum class state
-			{
-				not_started,
-				started,
-				cancellation_requested,
-				completed
-			};
-
-			void on_cancellation_requested() noexcept
-			{
-				auto oldState = m_state.load(std::memory_order_acquire);
-				if (oldState == state::not_started)
-				{
-					// This callback is running concurrently with await_suspend().
-					// The call to start the operation may not have returned yet so
-					// we can't safely request cancellation of it. Instead we try to
-					// notify the await_suspend() thread by transitioning the state
-					// to state::cancellation_requested so that the await_suspend()
-					// thread can request cancellation after it has finished starting
-					// the operation.
-					const bool transferredCancelResponsibility = m_state.compare_exchange_strong(
-						oldState,
-						state::cancellation_requested,
-						std::memory_order_release,
-						std::memory_order_acquire);
-					if (transferredCancelResponsibility)
-					{
-						return;
-					}
-				}
-
-				// No point requesting cancellation if the operation has already completed.
-				if (oldState != state::completed)
-				{
-					static_cast<OPERATION*>(this)->cancel();
-				}
-			}
-
-			std::atomic<state> m_state;
-			cppcoro::cancellation_token m_cancellationToken;
-			std::optional<cppcoro::cancellation_registration> m_cancellationRegistration;
-		};
-
 		using io_operation_base = uring_operation_base;
 
 		template<typename OPERATION>
 		using io_operation = uring_operation<OPERATION>;
 
 		template<typename OPERATION>
-		using io_operation_cancellable = uring_operation_cancellable<OPERATION>;
+		using io_operation_cancellable = base_operation_cancellable<OPERATION, uring_operation<OPERATION>>;
 	}  // namespace detail
 }  // namespace cppcoro
 
