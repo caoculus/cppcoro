@@ -729,12 +729,22 @@ void cppcoro::io_service::post_wake_up_event() noexcept
 	// and the system is out of memory. In this case threads should find other events
 	// in the queue next time they check anyway and thus wake-up.
 	(void)::PostQueuedCompletionStatus(m_iocpHandle.handle(), 0, 0, nullptr);
-#endif
+#else
+# if CPPCORO_USE_IO_RING
 	static detail::lnx::io_message nop;
     auto sqe = m_ioQueue.get_sqe();
     io_uring_prep_nop(sqe);
     io_uring_sqe_set_data(sqe, &nop);
 	assert(m_ioQueue.submit() == 1);
+# else
+    m_nopFd = detail::safe_handle{ eventfd(1, 0) };
+    if (!m_nopFd)
+    {
+        throw std::system_error { -errno, std::system_category(), "during eventfd" };
+    }
+	m_ioQueue.submit(*m_nopFd, &m_event);
+# endif
+#endif
 }
 
 #if CPPCORO_OS_WINNT

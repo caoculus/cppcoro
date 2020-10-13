@@ -150,4 +150,12 @@
 # define CPPCORO_CPU_CACHE_LINE 64
 #endif
 
+#if CPPCORO_OS_LINUX && !defined(CPPCORO_USE_IO_RING)
+# define CPPCORO_USE_IO_RING 0
+# define CPPCORO_USE_EPOLL 1
+#else
+# define CPPCORO_USE_IO_RING 1
+# define CPPCORO_USE_EPOLL 0
+#endif
+
 #endif

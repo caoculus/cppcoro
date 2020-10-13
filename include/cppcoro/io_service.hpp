@@ -13,7 +13,11 @@
 # include <cppcoro/detail/win32.hpp>
 #else
 # include <cppcoro/detail/linux.hpp>
-# include <cppcoro/detail/linux_uring_operation.hpp>
+# if CPPCORO_USE_IO_RING
+#  include <cppcoro/detail/linux_uring_operation.hpp>
+# else
+#  include <cppcoro/detail/linux_epoll_operation.hpp>
+# endif
 #endif
 
 #include <optional>
@@ -183,6 +187,13 @@ namespace cppcoro
 		std::mutex m_winsockInitialisationMutex;
 #else
 		detail::lnx::io_queue m_ioQueue;
+# if CPPCORO_USE_EPOLL
+		detail::safe_handle m_nopFd;
+		epoll_event m_event{
+			EPOLLIN,
+			{nullptr}
+		};
+# endif
 #endif
 
 		// Head of a linked-list of schedule operations that are
@@ -259,16 +270,16 @@ namespace cppcoro
 	};
 #else
     class io_service::schedule_operation
-        : public detail::uring_operation<io_service::schedule_operation>
+        : public detail::io_operation<io_service::schedule_operation>
     {
     public:
         schedule_operation(
             io_service& service) noexcept
-            : detail::uring_operation<io_service::schedule_operation>(service.ioQueue())
+            : detail::io_operation<io_service::schedule_operation>(service.ioQueue())
             {}
 
     private:
-        friend detail::uring_operation<io_service::schedule_operation>;
+        friend detail::io_operation<io_service::schedule_operation>;
 
         bool try_start() noexcept {
             return try_start_nop();
@@ -276,23 +287,23 @@ namespace cppcoro
     };
 
     class io_service::timed_schedule_operation
-		: public detail::uring_operation_cancellable<io_service::timed_schedule_operation>
+		: public detail::io_operation_cancellable<io_service::timed_schedule_operation>
 	{
 	public:
 		timed_schedule_operation(
 			io_service& service,
             std::chrono::high_resolution_clock::time_point resumeTime, cppcoro::cancellation_token cancellationToken) noexcept
-			: detail::uring_operation_cancellable<io_service::timed_schedule_operation>(service.ioQueue(), std::move(cancellationToken))
+			: detail::io_operation_cancellable<io_service::timed_schedule_operation>(service.ioQueue(), std::move(cancellationToken))
 			    , m_resumeTime{std::move(resumeTime)} {}
 
 	private:
-        friend detail::uring_operation_cancellable<io_service::timed_schedule_operation>;
+        friend detail::io_operation_cancellable<io_service::timed_schedule_operation>;
 
 		bool try_start() noexcept {
 			auto now = std::chrono::high_resolution_clock::now();
 			if(m_resumeTime > now)
 			{
-				auto ts = detail::lnx::duration_to_kernel_timespec(m_resumeTime - now);
+				auto ts = detail::lnx::duration_to_eventspec(m_resumeTime - now);
 				return try_start_timeout(&ts, false);
 			}
 			else
@@ -302,7 +313,7 @@ namespace cppcoro
 			}
 			// This should work but it does not
 			// looks like IORING_TIMEOUT_ABS is broken
-//			auto ts = detail::lnx::time_point_to_kernel_timespec(m_resumeTime);
+//			auto ts = detail::lnx::time_point_to_eventspec(m_resumeTime);
 //			return try_start_timeout(&ts, true);
 		}
 
@@ -320,7 +331,7 @@ namespace cppcoro
         decltype(auto) await_resume() {
             if (m_message.result != -ETIME)
             {
-                detail::uring_operation_cancellable<io_service::timed_schedule_operation>::await_resume();
+                detail::io_operation_cancellable<io_service::timed_schedule_operation>::await_resume();
             }
         }
 	};

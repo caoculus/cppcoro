@@ -1,3 +1,5 @@
+option(CPPCORO_USE_IO_RING "Enable io_ring backend" OFF)
+
 set(includes
 	awaitable_traits.hpp
 	is_awaitable.hpp
@@ -145,18 +147,39 @@ if(WIN32)
     )
     list(APPEND sources ${win32Sources})
 else()
-	find_package(liburing REQUIRED)
-	list(APPEND libraries liburing::liburing)
-
 	set(linuxDetailIncludes
 		linux.hpp
 		)
+	if (CPPCORO_USE_IO_RING)
+		find_package(liburing REQUIRED)
+		list(APPEND libraries liburing::liburing)
+
+		list(APPEND linuxDetailIncludes
+			linux_uring_queue.hpp
+			linux_uring_operation.hpp
+			)
+		list(APPEND defines
+			CPPCORO_USE_IO_RING=1
+			)
+		list(APPEND linuxSources
+			linux_uring_queue.cpp
+			)
+	else()
+		list(APPEND linuxDetailIncludes
+			linux_epoll_queue.hpp
+			linux_epoll_operation.hpp
+			)
+		list(APPEND linuxSources
+			linux_epoll_queue.cpp
+			)
+	endif()
 	list(TRANSFORM linuxDetailIncludes PREPEND "${PROJECT_SOURCE_DIR}/include/cppcoro/detail/")
 	list(APPEND detailIncludes ${linuxDetailIncludes})
-	set(linuxSources
+	list(APPEND linuxSources
 		linux.cpp
 		)
 	list(APPEND sources ${linuxSources})
+
 endif()
 
 add_library(cppcoro
@@ -171,6 +194,7 @@ target_include_directories(cppcoro PUBLIC
 	$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
 	$<INSTALL_INTERFACE:include>)
 target_compile_features(cppcoro PUBLIC cxx_std_20)
+target_compile_definitions(cppcoro PUBLIC ${defines})
 
 find_package(CppcoroCoroutines REQUIRED)
 target_link_libraries(cppcoro PUBLIC cppcoro::coroutines ${libraries})

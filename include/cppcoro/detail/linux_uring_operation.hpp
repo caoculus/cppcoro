@@ -19,6 +19,8 @@
 #include <optional>
 #include <system_error>
 
+#include <cppcoro/detail/linux_uring_queue.hpp>
+
 namespace cppcoro
 {
 	namespace detail
