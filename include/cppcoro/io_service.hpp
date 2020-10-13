@@ -318,9 +318,15 @@ namespace cppcoro
 		}
 
 		void cancel() noexcept {
-			if (m_awaitingCoroutine.address() != nullptr)
+			if (this->m_message.awaitingCoroutine != nullptr)
 			{
-				cancel_io();
+#if CPPCORO_USE_IO_RING
+				timeout_remove();
+                this->m_message.result = error_operation_aborted;
+                try_start_nop();
+#else
+                cancel_io();
+#endif
 			}
 		}
 

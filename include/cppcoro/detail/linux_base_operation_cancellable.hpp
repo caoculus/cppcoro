@@ -22,10 +22,10 @@ namespace cppcoro::detail {
     template<typename OPERATION, typename BASE_OPERATION>
     class base_operation_cancellable : protected BASE_OPERATION
     {
+    protected:
         // ERROR_OPERATION_ABORTED value from <errno.h>
         static constexpr int error_operation_aborted = -ECANCELED;
 
-    protected:
         base_operation_cancellable(lnx::io_queue& ioQueue, cancellation_token&& ct) noexcept
             : BASE_OPERATION(ioQueue, 0)
             , m_state(ct.is_cancellation_requested() ? state::completed : state::not_started)
@@ -52,7 +52,7 @@ namespace cppcoro::detail {
         {
             static_assert(std::is_base_of_v<base_operation_cancellable, OPERATION>);
 
-            this->m_awaitingCoroutine = awaitingCoroutine;
+            this->m_message = awaitingCoroutine;
 
             // TRICKY: Register cancellation callback before starting the operation
             // in case the callback registration throws due to insufficient

@@ -96,6 +96,14 @@ namespace cppcoro
 			{
 				void* awaitingCoroutine = nullptr;
 				int   result = -1;
+
+				io_message& operator=(const coroutine_handle<> &coroutine_handle) noexcept {
+				    awaitingCoroutine = coroutine_handle.address();
+                    return *this;
+				}
+                explicit operator coroutine_handle<>() const noexcept {
+                    return coroutine_handle<>::from_address(awaitingCoroutine);
+				}
 			};
 
 		}  // namespace linux

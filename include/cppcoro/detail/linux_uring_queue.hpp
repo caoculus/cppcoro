@@ -40,6 +40,44 @@ namespace cppcoro::detail::lnx
         return {secs.time_since_epoch().count(), ns.count()};
     }
 
+    class uring_queue;
+
+    /// RAII IO transaction
+    class [[nodiscard]] io_transaction final {
+    public:
+        io_transaction(uring_queue &queue, io_message& message) noexcept;
+        bool commit() noexcept;
+
+        [[nodiscard]] io_transaction &read(int fd, void *buffer, size_t size, size_t offset) noexcept;
+        [[nodiscard]] io_transaction &write(int fd, const void * buffer, size_t size, size_t offset) noexcept;
+
+        [[nodiscard]] io_transaction &readv(int fd, iovec* vec, size_t count, size_t offset) noexcept;
+        [[nodiscard]] io_transaction &writev(int fd, iovec* vec, size_t count, size_t offset) noexcept;
+
+        [[nodiscard]] io_transaction &recv(int fd, void * buffer, size_t size, int flags = 0) noexcept;
+        [[nodiscard]] io_transaction &send(int fd, const void *buffer, size_t size, int flags = 0) noexcept;
+
+        [[nodiscard]] io_transaction &recvmsg(int fd, msghdr *msg, int flags = 0) noexcept;
+        [[nodiscard]] io_transaction &sendmsg(int fd, msghdr *msg, int flags = 0) noexcept;
+
+        [[nodiscard]] io_transaction &connect(int fd, const void* to, size_t to_size) noexcept;
+        [[nodiscard]] io_transaction &close(int fd) noexcept;
+
+        [[nodiscard]] io_transaction &accept(int fd, const void* to, socklen_t* to_size, int flags = 0) noexcept;
+
+        [[nodiscard]] io_transaction &timeout(__kernel_timespec *ts, bool absolute = false) noexcept;
+        [[nodiscard]] io_transaction &timeout_remove(int flags = 0) noexcept;
+
+        [[nodiscard]] io_transaction &nop() noexcept;
+
+        [[nodiscard]] io_transaction &cancel(int flags = 0) noexcept;
+
+    private:
+        uring_queue &m_queue;
+        io_message& m_message;
+        io_uring_sqe *m_sqe;
+    };
+
 	class uring_queue
 	{
 	public:
@@ -49,11 +87,18 @@ namespace cppcoro::detail::lnx
 		uring_queue& operator=(uring_queue&&) = delete;
 		uring_queue(uring_queue const&) = delete;
 		uring_queue& operator=(uring_queue const&) = delete;
-		bool dequeue(io_message*& message, bool wait);
-		int submit() noexcept;
-		io_uring_sqe* get_sqe() noexcept;
 
-	private:
+		io_transaction transaction(io_message &message) noexcept;
+
+		bool dequeue(io_message*& message, bool wait);
+
+    private:
+        friend class io_transaction;
+
+		io_uring_sqe* get_sqe() noexcept;
+        int submit() noexcept;
+        void unlock() noexcept;
+
 		std::mutex m_inMux;
 		std::mutex m_outMux;
 		io_uring ring_{};

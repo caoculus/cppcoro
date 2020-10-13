@@ -706,8 +706,7 @@ bool cppcoro::io_service::try_process_one_event(bool waitForEvent)
 
         if (message != nullptr && message->awaitingCoroutine != nullptr)
         {
-            coroutine_handle<>::from_address(reinterpret_cast<void*>(message->awaitingCoroutine))
-				.resume();
+            static_cast<coroutine_handle<>>(*message).resume();
         }
 
         if (is_stop_requested())
@@ -732,10 +731,7 @@ void cppcoro::io_service::post_wake_up_event() noexcept
 #else
 # if CPPCORO_USE_IO_RING
 	static detail::lnx::io_message nop;
-    auto sqe = m_ioQueue.get_sqe();
-    io_uring_prep_nop(sqe);
-    io_uring_sqe_set_data(sqe, &nop);
-	assert(m_ioQueue.submit() == 1);
+	assert(m_ioQueue.transaction(nop).nop().commit());
 # else
     m_nopFd = detail::safe_handle{ eventfd(1, 0) };
     if (!m_nopFd)

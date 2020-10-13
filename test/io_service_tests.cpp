@@ -148,14 +148,20 @@ TEST_CASE("Single timer cancellation"
 
     cppcoro::io_service ioService;
     cppcoro::cancellation_source source;
+
     cppcoro::sync_wait(cppcoro::when_all_ready(
         [&]() -> cppcoro::task<> {
-            auto stopIoService = cppcoro::on_scope_exit([&] { ioService.stop(); });
-            CHECK_THROWS_AS(co_await ioService.schedule_after(20'000ms, source.token()), const cppcoro::operation_cancelled&);
+                CHECK_THROWS_AS(co_await ioService.schedule_after(20'000ms, source.token()), const cppcoro::operation_cancelled&);
         }(),
         [&]() -> cppcoro::task<>
         {
+            co_await ioService.schedule_after(200ms);
             source.request_cancellation();
+            co_await ioService.schedule_after(200ms);
+            ioService.stop();
+        }(),
+        [&]() -> cppcoro::task<>
+        {
             ioService.process_events();
             co_return;
         }()));
@@ -214,10 +220,12 @@ TEST_CASE("Timer cancellation"
 
 TEST_CASE_FIXTURE(io_service_fixture_with_threads<1>, "Many concurrent timers")
 {
+    std::atomic<size_t> count = 0;
 	auto startTimer = [&]() -> cppcoro::task<>
 	{
 		using namespace std::literals::chrono_literals;
 		co_await io_service().schedule_after(50ms);
+		++count;
 	};
 
 	constexpr std::uint32_t taskCount = 10'000;
@@ -242,6 +250,7 @@ TEST_CASE_FIXTURE(io_service_fixture_with_threads<1>, "Many concurrent timers")
 
 	auto end = std::chrono::high_resolution_clock::now();
 
+	REQUIRE(count == taskCount);
 	MESSAGE(
 		"Waiting for " << taskCount << " x 50ms timers took "
 		<< std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()

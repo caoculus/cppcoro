@@ -23,15 +23,10 @@ namespace cppcoro
 {
 	namespace detail
 	{
+	    static constexpr auto uring_no_sqe_available = -ENOSR;
+
 		class uring_operation_base
 		{
-			auto submitt(io_uring_sqe* sqe)
-			{
-				m_message.awaitingCoroutine = m_awaitingCoroutine.address();
-				io_uring_sqe_set_data(sqe, &m_message);
-				return m_ioQueue.submit();
-			}
-
 		public:
 			uring_operation_base(lnx::io_queue& ioService, size_t offset = 0) noexcept
 				: m_ioQueue(ioService)
@@ -44,41 +39,29 @@ namespace cppcoro
 			{
 				m_vec.iov_base = buffer;
 				m_vec.iov_len = size;
-				auto sqe = m_ioQueue.get_sqe();
-				io_uring_prep_readv(sqe, fd, &m_vec, 1, m_offset);
-                if (auto res = submitt(sqe); res < 0) {
-                    m_message.result = res;
-                    return false;
-                }
-                return true;
+                return m_ioQueue.transaction(m_message)
+                    .readv(fd, &m_vec, 1, m_offset)
+                    .commit();
 			}
 
 			bool try_start_write(int fd, const void* buffer, size_t size) noexcept
 			{
 				m_vec.iov_base = const_cast<void*>(buffer);
 				m_vec.iov_len = size;
-				auto sqe = m_ioQueue.get_sqe();
-				io_uring_prep_writev(sqe, fd, &m_vec, 1, m_offset);
-                if (auto res = submitt(sqe); res < 0) {
-                    m_message.result = res;
-                    return false;
-                }
-                return true;
+                return m_ioQueue.transaction(m_message)
+                    .writev(fd, &m_vec, 1, m_offset)
+                    .commit();
 			}
 
 			bool try_start_send(int fd, const void* buffer, size_t size) noexcept
 			{
-				auto sqe = m_ioQueue.get_sqe();
-				io_uring_prep_send(sqe, fd, buffer, size, 0);
-                if (auto res = submitt(sqe); res < 0) {
-                    m_message.result = res;
-                    return false;
-                }
-                return true;
+                return m_ioQueue.transaction(m_message)
+                    .send(fd, buffer, size)
+                    .commit();
 			}
 
 			bool try_start_sendto(
-				int fd, const void* to, size_t to_size, void* buffer, size_t size) noexcept
+				int fd, const void* to, size_t to_size, void* buffer, size_t size, int flags = 0) noexcept
 			{
 				m_vec.iov_base = buffer;
 				m_vec.iov_len = size;
@@ -87,28 +70,20 @@ namespace cppcoro
 				m_msghdr.msg_namelen = to_size;
 				m_msghdr.msg_iov = &m_vec;
 				m_msghdr.msg_iovlen = 1;
-				auto sqe = m_ioQueue.get_sqe();
-				io_uring_prep_sendmsg(sqe, fd, &m_msghdr, 0);
-                if (auto res = submitt(sqe); res < 0) {
-                    m_message.result = res;
-                    return false;
-                }
-                return true;
+                return m_ioQueue.transaction(m_message)
+                    .sendmsg(fd, &m_msghdr, flags)
+                    .commit();
 			}
 
 			bool try_start_recv(int fd, void* buffer, size_t size, int flags) noexcept
 			{
-				auto sqe = m_ioQueue.get_sqe();
-				io_uring_prep_recv(sqe, fd, buffer, size, flags);
-                if (auto res = submitt(sqe); res < 0) {
-                    m_message.result = res;
-                    return false;
-                }
-                return true;
+                return m_ioQueue.transaction(m_message)
+                    .recv(fd, buffer, size, flags)
+                    .commit();
 			}
 
 			bool try_start_recvfrom(
-				int fd, void* from, size_t from_size, void* buffer, size_t size, int flags) noexcept
+				int fd, void* from, size_t from_size, void* buffer, size_t size, int flags = 0) noexcept
 			{
 				m_vec.iov_base = buffer;
 				m_vec.iov_len = size;
@@ -117,81 +92,56 @@ namespace cppcoro
 				m_msghdr.msg_namelen = from_size;
 				m_msghdr.msg_iov = &m_vec;
 				m_msghdr.msg_iovlen = 1;
-				auto sqe = m_ioQueue.get_sqe();
-				io_uring_prep_recvmsg(sqe, fd, &m_msghdr, flags);
-                if (auto res = submitt(sqe); res < 0) {
-                    m_message.result = res;
-                    return false;
-                }
-                return true;
+                return m_ioQueue.transaction(m_message)
+                    .sendmsg(fd, &m_msghdr, flags)
+                    .commit();
 			}
 
 			bool try_start_connect(int fd, const void* to, size_t to_size) noexcept
 			{
-				auto sqe = m_ioQueue.get_sqe();
-				io_uring_prep_connect(
-					sqe, fd, reinterpret_cast<sockaddr*>(const_cast<void*>(to)), to_size);
-                if (auto res = submitt(sqe); res < 0) {
-                    m_message.result = res;
-                    return false;
-                }
-                return true;
+                return m_ioQueue.transaction(m_message)
+                    .connect(fd, to, to_size)
+                    .commit();
 			}
 
 			bool try_start_disconnect(int fd) noexcept
 			{
-				auto sqe = m_ioQueue.get_sqe();
-				io_uring_prep_close(sqe, fd);
-                if (auto res = submitt(sqe); res < 0) {
-                    m_message.result = res;
-                    return false;
-                }
-                return true;
+                return m_ioQueue.transaction(m_message)
+                    .close(fd)
+                    .commit();
 			}
 
-			bool try_start_accept(int fd, const void* to, socklen_t* to_size) noexcept
+			bool try_start_accept(int fd, const void* to, socklen_t* to_size, int flags = 0) noexcept
 			{
-				auto sqe = m_ioQueue.get_sqe();
-				io_uring_prep_accept(
-					sqe, fd, reinterpret_cast<sockaddr*>(const_cast<void*>(to)), to_size, 0);
-                if (auto res = submitt(sqe); res < 0) {
-                    m_message.result = res;
-                    return false;
-                }
-                return true;
+                return m_ioQueue.transaction(m_message)
+                    .accept(fd, to, to_size, flags)
+                    .commit();
 			}
 
 			bool try_start_timeout(__kernel_timespec *ts, bool absolute = false) noexcept {
-                auto sqe = m_ioQueue.get_sqe();
-				io_uring_prep_timeout(sqe, ts, 0, absolute ? IORING_TIMEOUT_ABS : 0);
-				if (auto res = submitt(sqe); res < 0) {
-				    m_message.result = res;
-				    return false;
-				}
-				return true;
+                return m_ioQueue.transaction(m_message)
+                    .timeout(ts)
+                    .commit();
 			}
 
-            bool try_start_nop() noexcept {
-                auto sqe = m_ioQueue.get_sqe();
-                io_uring_prep_nop(sqe);
-                if (auto res = submitt(sqe); res < 0) {
-                    m_message.result = res;
-                    return false;
-                }
-                return true;
+            bool timeout_remove(int flags = 0)
+            {
+                return m_ioQueue.transaction(m_message)
+                    .timeout_remove(flags)
+                    .commit();
             }
 
-			bool cancel_io()
+            bool try_start_nop() noexcept {
+                return m_ioQueue.transaction(m_message)
+                    .nop()
+                    .commit();
+            }
+
+			bool cancel_io(int flags = 0)
 			{
-				auto sqe = m_ioQueue.get_sqe();
-				io_uring_prep_cancel(sqe, &m_message, 0);
-				io_uring_sqe_set_data(sqe, &m_message);
-                m_message.result = -ECANCELED;
-                if (auto res = submitt(sqe); res < 0) {
-                    m_message.result = res;
-                    return false;
-                }
-                return true;
+                return m_ioQueue.transaction(m_message)
+                    .cancel(flags)
+                    .commit();
 			}
 
 			std::size_t get_result()
@@ -205,7 +155,6 @@ namespace cppcoro
 			}
 
 			size_t m_offset;
-			coroutine_handle<> m_awaitingCoroutine;
 			iovec m_vec;
 			msghdr m_msghdr;
 			detail::lnx::io_message m_message;
@@ -229,7 +178,7 @@ namespace cppcoro
 			{
 				static_assert(std::is_base_of_v<uring_operation, OPERATION>);
 
-				m_awaitingCoroutine = awaitingCoroutine;
+				m_message = awaitingCoroutine;
 				return static_cast<OPERATION*>(this)->try_start();
 			}
 
