@@ -18,11 +18,7 @@ namespace cppcoro::detail::lnx
         // edge-triggered event
         // see https://man7.org/linux/man-pages/man7/epoll.7.html
 	    event->events |= EPOLLET;
-		if (epoll_ctl(*m_epollFd, op, fd, event) < 0)
-		{
-			throw std::system_error{ -errno, std::system_category(), "during epoll_ctl" };
-		}
-		return 0;
+		return epoll_ctl(*m_epollFd, op, fd, event);
 	}
 
 	bool epoll_queue::dequeue(detail::lnx::io_message*& msg, bool wait)

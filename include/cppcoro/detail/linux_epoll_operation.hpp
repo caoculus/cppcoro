@@ -127,40 +127,60 @@ namespace cppcoro::detail
 		//            return submitt(sqe) == 1;
 		//        }
 
-		bool try_start_timeout(itimerspec* ts, bool absolute = false) // TODO noexcept
+		bool try_start_timeout(itimerspec* ts, bool absolute = false) noexcept
 		{
 			m_fd = safe_handle{ timerfd_create(CLOCK_MONOTONIC, 0) };
 			if (!m_fd)
 			{
-				throw std::system_error { -errno, std::system_category(), "during timerfd_create" };
+                m_message.result = -errno;
+                return false;
 			}
 
             if (timerfd_settime(*m_fd, 0, ts, nullptr) < 0) {
-                throw std::system_error { -errno, std::system_category(), "during timerfd_settime" };
+                m_message.result = -errno;
+                return false;
             }
-			return submitt() == 0;
+			if(submitt()) {
+                m_message.result = -errno;
+                return false;
+			}
+            return true;
 		}
 
-		bool try_start_nop()
+		bool try_start_nop() noexcept
 		{
             m_fd = safe_handle{ eventfd(1, 0) };
             if (!m_fd)
             {
-                throw std::system_error { -errno, std::system_category(), "during eventfd" };
+                m_message.result = -errno;
+                return false;
             }
-            return submitt() == 0;
+            if (submitt()) {
+                m_message.result = -errno;
+                return false;
+            }
+            return true;
 		}
 
-		bool cancel_io()
+		bool cancel_io() noexcept
 		{
-		    bool success = m_ioQueue.submit(*m_fd, &m_event, EPOLL_CTL_DEL) == 0;  // dont use epoll_operation_base::submit here !
+            // dont use epoll_operation_base::submit here !
+		    if (m_ioQueue.submit(*m_fd, &m_event, EPOLL_CTL_DEL)) {
+		        m_message.result = -errno;
+		        return false;
+		    }
             m_fd = safe_handle{ eventfd(1, 0) };
             if (!m_fd)
             {
-                throw std::system_error { -errno, std::system_category(), "during eventfd" };
+                m_message.result = -errno;
+                return false;
             }
             m_message.result = -ECANCELED;
-            return success | (m_ioQueue.submit(*m_fd, &m_event) == 0);
+            if (m_ioQueue.submit(*m_fd, &m_event)) {
+                m_message.result = -errno;
+                return false;
+            }
+            return true;
 		}
 
 		std::size_t get_result()
@@ -240,7 +260,7 @@ namespace cppcoro::detail
 		}
 
 		CPPCORO_NOINLINE
-		bool await_suspend(coroutine_handle<> awaitingCoroutine)
+		bool await_suspend(coroutine_handle<> awaitingCoroutine) noexcept
 		{
 			static_assert(std::is_base_of_v<epoll_operation_cancellable, OPERATION>);
 
