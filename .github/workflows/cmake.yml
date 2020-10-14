@@ -4,7 +4,7 @@ on: [push, pull_request]
 
 env:
   # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
-  BUILD_TYPE: Release
+  CMAKE_BUILD_TYPE: Release
 
 jobs:
   build:
@@ -12,98 +12,119 @@ jobs:
     # well on Windows or Mac.  You can convert this to a matrix build if you need
     # cross-platform coverage.
     # See: https://docs.github.com/en/actions/configuring-and-managing-workflows/configuring-a-workflow#configuring-a-build-matrix
-    name: ${{ matrix.config.name }}
-    runs-on: ${{ matrix.config.os }}
+    name: ${{ matrix.env.NAME }}
+    runs-on: ${{ matrix.env.OS }}
 
     strategy:
       fail-fast: false
       matrix:
-        config:
+        env:
           - {
-            name: "Linux g++ 10.2",
-            os: ubuntu-20.04,
-            cxx: "g++-10",
+            NAME: "Linux g++ 10.2",
+            OS: ubuntu-20.04,
+            CXX: "g++-10",
           }
           - {
-            name: "Linux clang-10",
-            os: ubuntu-20.04,
-            cxx: "clang++-10",
-            cxx_flags: -stdlib=libc++,
-            exe_linker_flags: -lc++,
+            NAME: "Linux g++ 10.2 - asan",
+            OS: ubuntu-20.04,
+            CXX: "g++-10",
+            CMAKE_BUILD_TYPE: Debug,
+            CMAKE_OPTIONS: "-DCPPCORO_ENABLE_ASAN=ON",
           }
           - {
-            name: "Linux clang-11",
-            os: ubuntu-20.04,
-            cxx: "clang++-11",
-            cxx_flags: -stdlib=libc++,
-            exe_linker_flags: -lc++,
+            NAME: "Linux g++ 10.2 - tsan",
+            OS: ubuntu-20.04,
+            CXX: "g++-10",
+            CMAKE_OPTIONS: "-DCPPCORO_ENABLE_TSAN=ON",
+          }
+          - {
+            NAME: "Linux g++ 10.2 - ubsan",
+            OS: ubuntu-20.04,
+            CXX: "g++-10",
+            CMAKE_OPTIONS: "-DCPPCORO_ENABLE_UBSAN=ON",
+          }
+          - {
+            NAME: "Linux clang-10",
+            OS: ubuntu-20.04,
+            CXX: "clang++-10",
+            CMAKE_CXX_FLAGS: -stdlib=libc++,
+            CMAKE_EXE_LINKE_FLAGS: -lc++,
+          }
+          - {
+            NAME: "Linux clang-11",
+            OS: ubuntu-20.04,
+            CXX: "clang++-11",
+            CMAKE_CXX_FLAGS: -stdlib=libc++,
+            CMAKE_EXE_LINKE_FLAGS: -lc++,
           }
 
     steps:
-    - uses: actions/checkout@v2
+      - uses: actions/checkout@v2
 
-    - name: Install Clang 10
-      id: install_clang_10
-      if: startsWith(matrix.config.os, 'ubuntu') && ( matrix.config.cxx == 'clang++-10' )
-      shell: bash
-      working-directory: ${{ env.HOME }}
-      run: |
-        wget https://apt.llvm.org/llvm.sh
-        chmod +x llvm.sh
-        sudo ./llvm.sh 10
-        sudo apt-get install libc++-10-dev libc++abi-10-dev
+      - name: Install Clang 10
+        id: install_clang_10
+        if: startsWith(matrix.env.OS, 'ubuntu') && ( matrix.env.CXX == 'clang++-10' )
+        shell: bash
+        working-directory: ${{ env.HOME }}
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 10
+          sudo apt-get install libc++-10-dev libc++abi-10-dev
 
-    - name: Install Clang 11
-      id: install_clang_11
-      if: startsWith(matrix.config.os, 'ubuntu') && ( matrix.config.cxx == 'clang++-11' )
-      shell: bash
-      working-directory: ${{ env.HOME }}
-      run: |
-        wget https://apt.llvm.org/llvm.sh
-        chmod +x llvm.sh
-        sudo ./llvm.sh 11
-        sudo apt-get install libc++-11-dev libc++abi-11-dev
+      - name: Install Clang 11
+        id: install_clang_11
+        if: startsWith(matrix.env.OS, 'ubuntu') && ( matrix.env.CXX == 'clang++-11' )
+        shell: bash
+        working-directory: ${{ env.HOME }}
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 11
+          sudo apt-get install libc++-11-dev libc++abi-11-dev
 
-    - name: Install g++ 10
-      id: install_gcc_10
-      if: startsWith(matrix.config.os, 'ubuntu') && ( matrix.config.cxx == 'g++-10' )
-      shell: bash
-      working-directory: ${{ env.HOME }}
-      run: |
-        sudo add-apt-repository ppa:ubuntu-toolchain-r/ppa
-        sudo apt-get install g++-10
+      - name: Install g++ 10
+        id: install_gcc_10
+        if: startsWith(matrix.env.OS, 'ubuntu') && ( matrix.env.CXX == 'g++-10' )
+        shell: bash
+        working-directory: ${{ env.HOME }}
+        run: |
+          sudo add-apt-repository ppa:ubuntu-toolchain-r/ppa
+          sudo apt-get install g++-10
 
-    - name: Create Build Environment
-      # Some projects don't allow in-source building, so create a separate build directory
-      # We'll use this as our working directory for all subsequent commands
-      run: cmake -E make_directory ${{runner.workspace}}/build
+      - name: Create Build Environment
+        # Some projects don't allow in-source building, so create a separate build directory
+        # We'll use this as our working directory for all subsequent commands
+        run: cmake -E make_directory ${{runner.workspace}}/build
 
-    - name: Configure CMake
-      # Use a bash shell so we can use the same syntax for environment variable
-      # access regardless of the host operating system
-      shell: bash
-      working-directory: ${{runner.workspace}}/build
-      env: 
-        CXX: ${{ matrix.config.cxx }}
-      # Note the current convention is to use the -S and -B options here to specify source 
-      # and build directories, but this is only available with CMake 3.13 and higher.  
-      # The CMake binaries on the Github Actions machines are (as of this writing) 3.12
-      run: |
-        cmake $GITHUB_WORKSPACE \
-          -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
-          -DCMAKE_CXX_FLAGS=${{ matrix.config.cxx_flags }} \
-          -DCMAKE_EXE_LINKER_FLAGS=${{ matrix.config.exe_linker_flags }} \
-          -DCMAKE_VERBOSE_MAKEFILE=ON
+      - name: Configure CMake
+        # Use a bash shell so we can use the same syntax for environment variable
+        # access regardless of the host operating system
+        shell: bash
+        working-directory: ${{runner.workspace}}/build
+        env: ${{ matrix.env }}
+        # Note the current convention is to use the -S and -B options here to specify source
+        # and build directories, but this is only available with CMake 3.13 and higher.
+        # The CMake binaries on the Github Actions machines are (as of this writing) 3.12
+        run: |
+          cmake $GITHUB_WORKSPACE \
+            -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE \
+            -DCMAKE_CXX_FLAGS=$CMAKE_CXX_FLAGS \
+            -DCMAKE_EXE_LINKER_FLAGS=$CMAKE_EXE_LINKER_FLAGS \
+            -DCMAKE_VERBOSE_MAKEFILE=ON \
+            $CMAKE_OPTIONS
 
-    - name: Build
-      working-directory: ${{runner.workspace}}/build
-      shell: bash
-      # Execute the build.  You can specify a specific target with "--target <NAME>"
-      run: cmake --build . --config $BUILD_TYPE
+      - name: Build
+        working-directory: ${{runner.workspace}}/build
+        shell: bash
+        env: ${{ matrix.env }}
+        # Execute the build.  You can specify a specific target with "--target <NAME>"
+        run: cmake --build . --config $CMAKE_BUILD_TYPE
 
-    - name: Test
-      working-directory: ${{runner.workspace}}/build
-      shell: bash
-      # Execute tests defined by the CMake configuration.  
-      # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
-      run: ctest --output-on-failure -C $BUILD_TYPE
+      - name: Test
+        working-directory: ${{runner.workspace}}/build
+        shell: bash
+        env: ${{ matrix.env }}
+        # Execute tests defined by the CMake configuration.
+        # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
+        run: ctest --output-on-failure -C $CMAKE_BUILD_TYPE
