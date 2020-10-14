@@ -161,6 +161,7 @@ target_compile_features(cppcoro PUBLIC cxx_std_20)
 
 find_package(CppcoroCoroutines REQUIRED)
 target_link_libraries(cppcoro PUBLIC cppcoro::coroutines)
+cppcoro_add_sanitizers(cppcoro PUBLIC)
 
 install(TARGETS cppcoro EXPORT cppcoroTargets
 	LIBRARY DESTINATION lib
