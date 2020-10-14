@@ -75,6 +75,7 @@ namespace cppcoro::detail::lnx
     private:
         uring_queue &m_queue;
         io_message& m_message;
+        std::scoped_lock<std::mutex> m_sqeLock;
         io_uring_sqe *m_sqe;
     };
 
@@ -97,9 +98,8 @@ namespace cppcoro::detail::lnx
 
 		io_uring_sqe* get_sqe() noexcept;
         int submit() noexcept;
-        void unlock() noexcept;
 
-		std::mutex m_inMux;
+		std::mutex m_sqeMux;
 		std::mutex m_outMux;
 		io_uring ring_{};
 	};

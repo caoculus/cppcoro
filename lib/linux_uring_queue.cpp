@@ -3,7 +3,7 @@
 namespace cppcoro::detail::lnx {
 
     io_transaction::io_transaction(io_queue &queue, io_message &message) noexcept
-        : m_queue{queue}, m_message{message}, m_sqe{queue.get_sqe()} {
+        : m_queue{queue}, m_message{message}, m_sqeLock{queue.m_sqeMux}, m_sqe{queue.get_sqe()} {
     }
 
     [[nodiscard]] bool io_transaction::commit() noexcept {
@@ -16,7 +16,6 @@ namespace cppcoro::detail::lnx {
         } else {
             // no stream resource
             m_message.result = -ENOSR;
-            m_queue.unlock();
             return false;
         }
     }
@@ -156,18 +155,12 @@ namespace cppcoro::detail::lnx {
     }
 
     io_uring_sqe *uring_queue::get_sqe() noexcept {
-        m_inMux.lock();
         return io_uring_get_sqe(&ring_);
     }
 
     int uring_queue::submit() noexcept {
         int res = io_uring_submit(&ring_);
-        m_inMux.unlock();
         return res;
-    }
-
-    void uring_queue::unlock() noexcept {
-        m_inMux.unlock();
     }
 
     bool uring_queue::dequeue(detail::lnx::io_message *&msg, bool wait) {
