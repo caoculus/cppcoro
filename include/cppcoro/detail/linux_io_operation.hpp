@@ -2,14 +2,18 @@
 // Copyright (c) Lewis Baker
 // Licenced under MIT license. See LICENSE.txt for details.
 ///////////////////////////////////////////////////////////////////////////////
-#ifndef CPPCORO_DETAIL_LINUX_BASE_OPERATION_CANCELABLE_HPP_INCLUDED
-#define CPPCORO_DETAIL_LINUX_BASE_OPERATION_CANCELABLE_HPP_INCLUDED
+#ifndef CPPCORO_DETAIL_LINUX_IO_OPERATION_HPP_INCLUDED
+#define CPPCORO_DETAIL_LINUX_IO_OPERATION_HPP_INCLUDED
 
+#include <cppcoro/io_service.hpp>
+#include <cppcoro/detail/linux.hpp>
+
+#include <cppcoro/coroutine.hpp>
+#include <arpa/inet.h>
 #include <cassert>
-
-#include <cppcoro/config.hpp>
-#include <cppcoro/cancellation_token.hpp>
-#include <cppcoro/operation_cancelled.hpp>
+#include <cstring>
+#include <optional>
+#include <system_error>
 
 #if CPPCORO_USE_IO_RING
 #include <cppcoro/detail/linux_uring_queue.hpp>
@@ -17,25 +21,108 @@
 #include <cppcoro/detail/linux_epoll_queue.hpp>
 #endif
 
-namespace cppcoro::detail {
+#include <cppcoro/operation_cancelled.hpp>
 
-    template<typename OPERATION, typename BASE_OPERATION>
-    class base_operation_cancellable : protected BASE_OPERATION
+#include <sys/timerfd.h>
+
+namespace cppcoro::detail
+{
+#if CPPCORO_USE_IO_RING
+    using event_timespec = __kernel_timespec;
+#else
+    using event_timespec = timespec;
+#endif
+
+    template<typename _Rep, typename _Period>
+    constexpr event_timespec duration_to_event_timespec(std::chrono::duration<_Rep, _Period> dur)
+    {
+        using namespace std::chrono;
+
+        auto ns = duration_cast<nanoseconds>(dur);
+        auto secs = duration_cast<seconds>(dur);
+        ns -= secs;
+
+        return {secs.count(), ns.count()};
+    }
+
+    template<typename _Clock, typename _Dur>
+    constexpr event_timespec time_point_to_event_timespec(std::chrono::time_point<_Clock, _Dur> tp)
+    {
+        using namespace std::chrono;
+
+        auto secs = time_point_cast<seconds>(tp);
+        auto ns = time_point_cast<nanoseconds>(tp) -
+                  time_point_cast<nanoseconds>(secs);
+
+        return {secs.time_since_epoch().count(), ns.count()};
+    }
+
+	class io_operation_base
+	{
+	public:
+        io_operation_base(lnx::io_queue& ioService, size_t offset = 0) noexcept
+			: m_ioQueue(ioService)
+			, m_offset(offset)
+			, m_message{}
+		{
+		}
+
+		std::size_t get_result()
+		{
+			if (m_message.result < 0)
+			{
+				throw std::system_error{ -m_message.result, std::system_category() };
+			}
+
+			return m_message.result;
+		}
+
+		size_t m_offset;
+        detail::lnx::io_message m_message;
+		detail::lnx::io_queue& m_ioQueue;
+	};
+
+	template<typename OPERATION>
+	class io_operation : protected io_operation_base
+	{
+	protected:
+        io_operation(lnx::io_queue& ioService, size_t offset = 0) noexcept
+			: io_operation_base(ioService, offset)
+		{
+		}
+
+	public:
+		bool await_ready() const noexcept { return false; }
+
+		CPPCORO_NOINLINE
+		bool await_suspend(coroutine_handle<> awaitingCoroutine)
+		{
+			static_assert(std::is_base_of_v<io_operation, OPERATION>);
+
+			m_message = awaitingCoroutine;
+			return static_cast<OPERATION*>(this)->try_start();
+		}
+
+		decltype(auto) await_resume() { return static_cast<OPERATION*>(this)->get_result(); }
+	};
+
+    template<typename OPERATION>
+    class io_operation_cancellable : protected io_operation<OPERATION>
     {
     protected:
         // ERROR_OPERATION_ABORTED value from <errno.h>
         static constexpr int error_operation_aborted = -ECANCELED;
 
-        base_operation_cancellable(lnx::io_queue& ioQueue, cancellation_token&& ct) noexcept
-            : BASE_OPERATION(ioQueue, 0)
+        io_operation_cancellable(lnx::io_queue& ioQueue, cancellation_token&& ct) noexcept
+            : io_operation<OPERATION>(ioQueue, 0)
             , m_state(ct.is_cancellation_requested() ? state::completed : state::not_started)
             , m_cancellationToken(std::move(ct))
         {
         }
 
-        base_operation_cancellable(
+        io_operation_cancellable(
             lnx::io_queue& ioQueue, size_t offset, cancellation_token&& ct) noexcept
-            : BASE_OPERATION(ioQueue, offset)
+            : io_operation<OPERATION>(ioQueue, offset)
             , m_state(ct.is_cancellation_requested() ? state::completed : state::not_started)
             , m_cancellationToken(std::move(ct))
         {
@@ -50,7 +137,7 @@ namespace cppcoro::detail {
         CPPCORO_NOINLINE
         bool await_suspend(coroutine_handle<> awaitingCoroutine) noexcept
         {
-            static_assert(std::is_base_of_v<base_operation_cancellable, OPERATION>);
+            static_assert(std::is_base_of_v<io_operation_cancellable, OPERATION>);
 
             this->m_message = awaitingCoroutine;
 
@@ -197,6 +284,7 @@ namespace cppcoro::detail {
         cppcoro::cancellation_token m_cancellationToken;
         std::optional<cppcoro::cancellation_registration> m_cancellationRegistration;
     };
-}
 
-#endif // CPPCORO_DETAIL_LINUX_BASE_OPERATION_CANCELABLE_HPP_INCLUDED
+}  // namespace cppcoro::detail
+
+#endif  // CPPCORO_DETAIL_LINUX_IO_OPERATION_HPP_INCLUDED

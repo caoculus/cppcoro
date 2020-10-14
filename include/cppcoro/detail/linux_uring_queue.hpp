@@ -16,30 +16,6 @@
 
 namespace cppcoro::detail::lnx
 {
-    template<typename _Rep, typename _Period>
-    constexpr __kernel_timespec duration_to_eventspec(std::chrono::duration<_Rep, _Period> dur)
-    {
-        using namespace std::chrono;
-
-        auto ns = duration_cast<nanoseconds>(dur);
-        auto secs = duration_cast<seconds>(dur);
-        ns -= secs;
-
-        return {secs.count(), ns.count()};
-    }
-
-    template<typename _Clock, typename _Dur>
-    constexpr __kernel_timespec time_point_to_eventspec(std::chrono::time_point<_Clock, _Dur> tp)
-    {
-        using namespace std::chrono;
-
-        auto secs = time_point_cast<seconds>(tp);
-        auto ns = time_point_cast<nanoseconds>(tp) -
-                  time_point_cast<nanoseconds>(secs);
-
-        return {secs.time_since_epoch().count(), ns.count()};
-    }
-
     class uring_queue;
 
     /// RAII IO transaction

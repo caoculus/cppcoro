@@ -729,17 +729,8 @@ void cppcoro::io_service::post_wake_up_event() noexcept
 	// in the queue next time they check anyway and thus wake-up.
 	(void)::PostQueuedCompletionStatus(m_iocpHandle.handle(), 0, 0, nullptr);
 #else
-# if CPPCORO_USE_IO_RING
-	static detail::lnx::io_message nop;
+    static detail::lnx::io_message nop;
 	assert(m_ioQueue.transaction(nop).nop().commit());
-# else
-    m_nopFd = detail::safe_handle{ eventfd(1, 0) };
-    if (!m_nopFd)
-    {
-        throw std::system_error { -errno, std::system_category(), "during eventfd" };
-    }
-	m_ioQueue.submit(*m_nopFd, &m_event);
-# endif
 #endif
 }
 

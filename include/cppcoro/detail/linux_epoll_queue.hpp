@@ -11,32 +11,47 @@
 
 #include <chrono>
 #include <mutex>
+#include <sys/socket.h>
 
 namespace cppcoro::detail::lnx
 {
-    template<typename _Rep, typename _Period>
-    constexpr itimerspec duration_to_eventspec(std::chrono::duration<_Rep, _Period> dur)
-    {
-        using namespace std::chrono;
+    class epoll_queue;
 
-        auto ns = duration_cast<nanoseconds>(dur);
-        auto secs = duration_cast<seconds>(dur);
-        ns -= secs;
+    /// RAII IO transaction
+    class [[nodiscard]] io_transaction final {
+    public:
+        io_transaction(epoll_queue &queue, io_message& message) noexcept;
+        bool commit() noexcept;
 
-        return {{0, 0}, { secs.count(), ns.count() } };
-    }
+        [[nodiscard]] io_transaction &read(int fd, void *buffer, size_t size, size_t offset) noexcept;
+        [[nodiscard]] io_transaction &write(int fd, const void * buffer, size_t size, size_t offset) noexcept;
 
-    template<typename _Clock, typename _Dur>
-    constexpr itimerspec time_point_to_eventspec(std::chrono::time_point<_Clock, _Dur> tp)
-    {
-        using namespace std::chrono;
+        [[nodiscard]] io_transaction &readv(int fd, iovec* vec, size_t count, size_t offset) noexcept;
+        [[nodiscard]] io_transaction &writev(int fd, iovec* vec, size_t count, size_t offset) noexcept;
 
-        auto secs = time_point_cast<seconds>(tp);
-        auto ns = time_point_cast<nanoseconds>(tp) -
-                  time_point_cast<nanoseconds>(secs);
+        [[nodiscard]] io_transaction &recv(int fd, void * buffer, size_t size, int flags = 0) noexcept;
+        [[nodiscard]] io_transaction &send(int fd, const void *buffer, size_t size, int flags = 0) noexcept;
 
-        return {{0, 0}, { secs.time_since_epoch().count(), ns.count() } };
-    }
+        [[nodiscard]] io_transaction &recvmsg(int fd, msghdr *msg, int flags = 0) noexcept;
+        [[nodiscard]] io_transaction &sendmsg(int fd, msghdr *msg, int flags = 0) noexcept;
+
+        [[nodiscard]] io_transaction &connect(int fd, const void* to, size_t to_size) noexcept;
+        [[nodiscard]] io_transaction &close(int fd) noexcept;
+
+        [[nodiscard]] io_transaction &accept(int fd, const void* to, socklen_t* to_size, int flags = 0) noexcept;
+
+        [[nodiscard]] io_transaction &timeout(timespec *ts, bool absolute = false) noexcept;
+        [[nodiscard]] io_transaction &timeout_remove(int flags = 0) noexcept;
+
+        [[nodiscard]] io_transaction &nop() noexcept;
+
+        [[nodiscard]] io_transaction &cancel(int flags = 0) noexcept;
+
+    private:
+        epoll_queue &m_queue;
+        io_message& m_message;
+        int m_error = 0;
+    };
 
     class epoll_queue
     {
@@ -48,10 +63,14 @@ namespace cppcoro::detail::lnx
         epoll_queue(epoll_queue const&) = delete;
         epoll_queue& operator=(epoll_queue const&) = delete;
         bool dequeue(io_message*& message, bool wait);
+        io_transaction transaction(io_message& message) noexcept;
+
+    private:
+        friend class io_transaction;
+
         int submit(int fd, epoll_event* event, int op = EPOLL_CTL_ADD) noexcept;
         epoll_event* get_event() noexcept;
 
-    private:
         std::mutex m_inMux;
         std::mutex m_outMux;
         safe_fd m_epollFd{};

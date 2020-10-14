@@ -13,11 +13,7 @@
 # include <cppcoro/detail/win32.hpp>
 #else
 # include <cppcoro/detail/linux.hpp>
-# if CPPCORO_USE_IO_RING
-#  include <cppcoro/detail/linux_uring_operation.hpp>
-# else
-#  include <cppcoro/detail/linux_epoll_operation.hpp>
-# endif
+# include <cppcoro/detail/linux_io_operation.hpp>
 #endif
 
 #include <optional>
@@ -282,7 +278,8 @@ namespace cppcoro
         friend detail::io_operation<io_service::schedule_operation>;
 
         bool try_start() noexcept {
-            return try_start_nop();
+            return m_ioQueue.transaction(m_message)
+                .nop().commit();
         }
     };
 
@@ -303,8 +300,9 @@ namespace cppcoro
 			auto now = std::chrono::high_resolution_clock::now();
 			if(m_resumeTime > now)
 			{
-				auto ts = detail::lnx::duration_to_eventspec(m_resumeTime - now);
-				return try_start_timeout(&ts, false);
+				auto ts = detail::duration_to_event_timespec(m_resumeTime - now);
+                return m_ioQueue.transaction(m_message)
+                    .timeout(&ts, false).commit();
 			}
 			else
 			{
@@ -313,7 +311,7 @@ namespace cppcoro
 			}
 			// This should work but it does not
 			// looks like IORING_TIMEOUT_ABS is broken
-//			auto ts = detail::lnx::time_point_to_eventspec(m_resumeTime);
+//			auto ts = detail::time_point_to_event_timespec(m_resumeTime);
 //			return try_start_timeout(&ts, true);
 		}
 
@@ -321,11 +319,14 @@ namespace cppcoro
 			if (this->m_message.awaitingCoroutine != nullptr)
 			{
 #if CPPCORO_USE_IO_RING
-				timeout_remove();
                 this->m_message.result = error_operation_aborted;
-                try_start_nop();
+                m_ioQueue.transaction(m_message)
+                    .timeout_remove()
+                    .nop()
+                    .commit();
 #else
-                cancel_io();
+                m_ioQueue.transaction(m_message)
+                    .cancel().commit();
 #endif
 			}
 		}

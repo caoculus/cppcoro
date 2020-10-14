@@ -149,6 +149,7 @@ if(WIN32)
 else()
 	set(linuxDetailIncludes
 		linux.hpp
+		linux_io_operation.hpp
 		)
 	if (CPPCORO_USE_IO_RING)
 		find_package(liburing REQUIRED)
@@ -156,7 +157,6 @@ else()
 
 		list(APPEND linuxDetailIncludes
 			linux_uring_queue.hpp
-			linux_uring_operation.hpp
 			)
 		list(APPEND defines
 			CPPCORO_USE_IO_RING=1
@@ -167,7 +167,6 @@ else()
 	else()
 		list(APPEND linuxDetailIncludes
 			linux_epoll_queue.hpp
-			linux_epoll_operation.hpp
 			)
 		list(APPEND linuxSources
 			linux_epoll_queue.cpp

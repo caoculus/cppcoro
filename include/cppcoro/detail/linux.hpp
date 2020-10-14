@@ -97,6 +97,11 @@ namespace cppcoro
 				void* awaitingCoroutine = nullptr;
 				int   result = -1;
 
+#if CPPCORO_USE_EPOLL
+				safe_fd fd{};
+				epoll_event event{0, this};
+#endif
+
 				io_message& operator=(const coroutine_handle<> &coroutine_handle) noexcept {
 				    awaitingCoroutine = coroutine_handle.address();
                     return *this;
