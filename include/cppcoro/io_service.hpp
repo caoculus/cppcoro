@@ -183,13 +183,6 @@ namespace cppcoro
 		std::mutex m_winsockInitialisationMutex;
 #else
 		detail::lnx::io_queue m_ioQueue;
-# if CPPCORO_USE_EPOLL
-		detail::safe_handle m_nopFd;
-		epoll_event m_event{
-			EPOLLIN,
-			{nullptr}
-		};
-# endif
 #endif
 
 		// Head of a linked-list of schedule operations that are

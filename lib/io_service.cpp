@@ -437,6 +437,7 @@ void cppcoro::io_service::stop() noexcept
 	const auto oldState = m_threadState.fetch_or(stop_requested_flag, std::memory_order_release);
 	if ((oldState & stop_requested_flag) == 0)
 	{
+
 		for (auto activeThreadCount = oldState / active_thread_count_increment;
 			activeThreadCount > 0;
 			--activeThreadCount)
@@ -728,14 +729,14 @@ void cppcoro::io_service::post_wake_up_event() noexcept
 	// and the system is out of memory. In this case threads should find other events
 	// in the queue next time they check anyway and thus wake-up.
 	(void)::PostQueuedCompletionStatus(m_iocpHandle.handle(), 0, 0, nullptr);
-#else
-//    auto nop = new detail::lnx::io_message;
-//	*nop = [nop] {
-//		delete nop;
-//	};
-//	assert(m_ioQueue.transaction(*nop).nop().commit());
-    static detail::lnx::io_message nop;
+#elif CPPCORO_USE_IO_RING
+	static detail::lnx::io_message nop;
     assert(m_ioQueue.transaction(nop).nop().commit());
+#else
+	// FIXME: EPOLL backend uses evenfd that cannot be reused
+	auto nop = std::make_shared<detail::lnx::io_message>();
+	*nop = [nop = nop] {}; // keepalive until consumed
+    assert(m_ioQueue.transaction(*nop).nop().commit());
 #endif
 }
 
