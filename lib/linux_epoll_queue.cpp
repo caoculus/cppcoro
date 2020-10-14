@@ -3,10 +3,13 @@
 #include <system_error>
 #include <sys/timerfd.h>
 
+#include <iostream> // TODO remove me !!
+
 namespace cppcoro::detail::lnx {
+
     io_transaction::io_transaction(epoll_queue &queue, io_message &message) noexcept
         : m_queue{queue}, m_message{message} {
-        m_message.event.events = EPOLLIN;
+        m_message.event.events = EPOLLIN | EPOLLONESHOT;
     }
 
     bool io_transaction::commit() noexcept {
@@ -23,7 +26,7 @@ namespace cppcoro::detail::lnx {
 
     io_transaction &io_transaction::timeout(timespec *ts, bool absolute) noexcept {
 
-        m_message.fd = safe_handle{ timerfd_create(CLOCK_MONOTONIC, 0) };
+        m_message.fd = safe_handle{ timerfd_create(CLOCK_REALTIME, 0) };
         if (!m_message.fd)
         {
             m_error = -errno;
@@ -60,8 +63,8 @@ namespace cppcoro::detail::lnx {
         return *this;
     }
 
-    epoll_queue::epoll_queue(size_t queue_length, uint32_t /*flags*/) {
-        m_epollFd = safe_fd{epoll_create(queue_length)};
+    epoll_queue::epoll_queue(size_t, uint32_t /*flags*/) {
+        m_epollFd = safe_fd{epoll_create1(0)};
         if (!m_epollFd) {
             throw std::system_error{-errno, std::system_category(), "during epoll_create"};
         }
@@ -70,7 +73,7 @@ namespace cppcoro::detail::lnx {
     int epoll_queue::submit(int fd, epoll_event *event, int op) noexcept {
         // edge-triggered event
         // see https://man7.org/linux/man-pages/man7/epoll.7.html
-        event->events |= EPOLLET;
+//        event->events |= EPOLLET;
         return epoll_ctl(*m_epollFd, op, fd, event);
     }
 
@@ -88,10 +91,10 @@ namespace cppcoro::detail::lnx {
             return false; // no event
         } else {
             msg = reinterpret_cast<detail::lnx::io_message *>(event.data.ptr);
-            if (msg != nullptr
-                && msg->result == -1) // manually set result eg.: -ECANCEL
+            if (msg != nullptr && msg->result == -1)
             {
-                msg->result = ret;
+                msg->result = 0;
+//				std::cout << "dequeue: " << msg << '\n';
             }
             return true;  // completed
         }

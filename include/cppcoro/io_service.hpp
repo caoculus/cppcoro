@@ -316,7 +316,7 @@ namespace cppcoro
 		}
 
 		void cancel() noexcept {
-			if (this->m_message.awaitingCoroutine != nullptr)
+			if (this->m_message.resume != nullptr)
 			{
 #if CPPCORO_USE_IO_RING
                 this->m_message.result = error_operation_aborted;

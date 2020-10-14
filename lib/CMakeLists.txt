@@ -197,6 +197,7 @@ target_compile_definitions(cppcoro PUBLIC ${defines})
 
 find_package(CppcoroCoroutines REQUIRED)
 target_link_libraries(cppcoro PUBLIC cppcoro::coroutines ${libraries})
+cppcoro_add_sanitizers(cppcoro PUBLIC)
 
 install(TARGETS cppcoro EXPORT cppcoroTargets
 	LIBRARY DESTINATION lib

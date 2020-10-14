@@ -17,13 +17,14 @@
 #include <sys/eventfd.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
-#include <sys/time.h>
+#include <ctime>
 #include <unistd.h>
 #include <utility>
 
 #include <string_view>
 #include <mutex>
 #include <cppcoro/coroutine.hpp>
+#include <functional>
 
 namespace cppcoro
 {
@@ -94,7 +95,7 @@ namespace cppcoro
 
 			struct io_message
 			{
-				void* awaitingCoroutine = nullptr;
+				std::function<void()> resume;
 				int   result = -1;
 
 #if CPPCORO_USE_EPOLL
@@ -102,13 +103,16 @@ namespace cppcoro
 				epoll_event event{0, this};
 #endif
 
-				io_message& operator=(const coroutine_handle<> &coroutine_handle) noexcept {
-				    awaitingCoroutine = coroutine_handle.address();
+				io_message& operator=(coroutine_handle<> coroutine_handle) noexcept {
+					resume = [coroutine_handle] {
+						coroutine_handle.resume();
+					};
                     return *this;
 				}
-                explicit operator coroutine_handle<>() const noexcept {
-                    return coroutine_handle<>::from_address(awaitingCoroutine);
-				}
+                io_message& operator=(std::function<void()> function) noexcept {
+                    resume = std::move(function);
+                    return *this;
+                }
 			};
 
 		}  // namespace linux

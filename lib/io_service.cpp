@@ -704,9 +704,9 @@ bool cppcoro::io_service::try_process_one_event(bool waitForEvent)
             return false;
         }
 
-        if (message != nullptr && message->awaitingCoroutine != nullptr)
+        if (message != nullptr && message->resume != nullptr)
         {
-            static_cast<coroutine_handle<>>(*message).resume();
+			message->resume();
         }
 
         if (is_stop_requested())
@@ -729,8 +729,13 @@ void cppcoro::io_service::post_wake_up_event() noexcept
 	// in the queue next time they check anyway and thus wake-up.
 	(void)::PostQueuedCompletionStatus(m_iocpHandle.handle(), 0, 0, nullptr);
 #else
+//    auto nop = new detail::lnx::io_message;
+//	*nop = [nop] {
+//		delete nop;
+//	};
+//	assert(m_ioQueue.transaction(*nop).nop().commit());
     static detail::lnx::io_message nop;
-	assert(m_ioQueue.transaction(nop).nop().commit());
+    assert(m_ioQueue.transaction(nop).nop().commit());
 #endif
 }
 

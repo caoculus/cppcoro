@@ -103,7 +103,9 @@ namespace cppcoro::detail
 			return static_cast<OPERATION*>(this)->try_start();
 		}
 
-		decltype(auto) await_resume() { return static_cast<OPERATION*>(this)->get_result(); }
+		decltype(auto) await_resume() {
+			return static_cast<OPERATION*>(this)->get_result();
+		}
 	};
 
     template<typename OPERATION>
