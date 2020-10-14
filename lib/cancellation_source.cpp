@@ -12,6 +12,7 @@
 cppcoro::cancellation_source::cancellation_source()
 	: m_state(detail::cancellation_state::create())
 {
+    new int;
 }
 
 cppcoro::cancellation_source::cancellation_source(const cancellation_source& other) noexcept

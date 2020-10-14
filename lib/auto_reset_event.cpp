@@ -68,7 +68,8 @@ namespace cppcoro
 
 	auto_reset_event::auto_reset_event(bool initiallySet)
 		: m_isSet(initiallySet)
-	{}
+	{
+	}
 
 	auto_reset_event::~auto_reset_event()
 	{}
