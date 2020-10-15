@@ -69,12 +69,18 @@ TEST_CASE("schedule coroutine")
 		}()));
 }
 
-TEST_CASE_FIXTURE(io_service_fixture_with_threads<2>, "multiple I/O threads servicing events")
+#if CPPCORO_USE_IO_RING
+using multi_io_thread_servicing_events_fixture = io_service_fixture_with_threads<2, 128>;
+#else
+using multi_io_thread_servicing_events_fixture = io_service_fixture_with_threads<2>;
+#endif
+
+TEST_CASE_FIXTURE(multi_io_thread_servicing_events_fixture, "multiple I/O threads servicing events")
 {
 	std::atomic<int> completedCount = 0;
 
 #ifdef CPPCORO_TESTS_LIMITED_RESOURCES
-    constexpr int operations = 128;
+    constexpr int operations = 256;
 #else
     constexpr int operations = 1000;
 #endif
@@ -197,7 +203,13 @@ TEST_CASE("Timer cancellation"
 		}()));
 }
 
-TEST_CASE_FIXTURE(io_service_fixture_with_threads<1>, "Many concurrent timers")
+#if CPPCORO_USE_IO_RING
+using many_concurrent_fixture = io_service_fixture_with_threads<1, 10>;
+#else
+using many_concurrent_fixture = io_service_fixture_with_threads<1>;
+#endif
+
+TEST_CASE_FIXTURE(many_concurrent_fixture, "Many concurrent timers")
 {
 	auto startTimer = [&]() -> cppcoro::task<>
 	{

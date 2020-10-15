@@ -355,7 +355,7 @@ cppcoro::io_service::io_service(
 	, m_winsockInitialised(false)
 	, m_winsockInitialisationMutex()
 #elif CPPCORO_OS_LINUX
-    , m_uq(queue_length)
+    , m_uq(std::max(queue_length, size_t(10)))
 #endif
 	, m_scheduleOperations(nullptr)
 #if CPPCORO_OS_WINNT
