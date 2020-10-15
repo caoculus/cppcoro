@@ -104,7 +104,7 @@ namespace cppcoro
 #endif
 
 				io_message& operator=(coroutine_handle<> coroutine_handle) noexcept {
-					resume = [coroutine_handle] {
+					resume = [coroutine_handle]() mutable {
 						coroutine_handle.resume();
 					};
                     return *this;

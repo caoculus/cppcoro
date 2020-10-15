@@ -3,8 +3,6 @@
 #include <system_error>
 #include <sys/timerfd.h>
 
-#include <iostream> // TODO remove me !!
-
 namespace cppcoro::detail::lnx {
 
     io_transaction::io_transaction(epoll_queue &queue, io_message &message) noexcept
@@ -39,7 +37,7 @@ namespace cppcoro::detail::lnx {
         return *this;
     }
     io_transaction &io_transaction::nop() noexcept {
-        m_message.fd = safe_handle{ eventfd(1, 0) };
+        m_message.fd = safe_handle{ eventfd(1, EFD_NONBLOCK | EFD_CLOEXEC) };
         if (!m_message.fd)
         {
             m_error = -errno;
@@ -73,12 +71,11 @@ namespace cppcoro::detail::lnx {
     int epoll_queue::submit(int fd, epoll_event *event, int op) noexcept {
         // edge-triggered event
         // see https://man7.org/linux/man-pages/man7/epoll.7.html
-//        event->events |= EPOLLET;
         return epoll_ctl(*m_epollFd, op, fd, event);
     }
 
     bool epoll_queue::dequeue(detail::lnx::io_message *&msg, bool wait) {
-        std::lock_guard guard(m_outMux);
+        std::scoped_lock lock{m_outMux};
         epoll_event event{0, {nullptr}};
         int ret = epoll_wait(*m_epollFd, &event, 1, wait ? -1 : 0);
         if (ret == -EAGAIN) {
@@ -94,7 +91,6 @@ namespace cppcoro::detail::lnx {
             if (msg != nullptr && msg->result == -1)
             {
                 msg->result = 0;
-//				std::cout << "dequeue: " << msg << '\n';
             }
             return true;  // completed
         }

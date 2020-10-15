@@ -183,6 +183,13 @@ namespace cppcoro
 		std::mutex m_winsockInitialisationMutex;
 #else
 		detail::lnx::io_queue m_ioQueue;
+#if CPPCORO_USE_EPOLL
+		// FIXME we cannot reuse an eventfd for waking up
+		//       events loop, so, a new one is created
+		//       for each running loop
+		std::mutex m_wakeUpMux;
+        std::vector<detail::lnx::io_message> m_wakeUpMessages;
+#endif
 #endif
 
 		// Head of a linked-list of schedule operations that are

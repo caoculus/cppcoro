@@ -437,7 +437,6 @@ void cppcoro::io_service::stop() noexcept
 	const auto oldState = m_threadState.fetch_or(stop_requested_flag, std::memory_order_release);
 	if ((oldState & stop_requested_flag) == 0)
 	{
-
 		for (auto activeThreadCount = oldState / active_thread_count_increment;
 			activeThreadCount > 0;
 			--activeThreadCount)
@@ -506,9 +505,9 @@ void cppcoro::io_service::ensure_winsock_initialised()
 
 #endif // CPPCORO_OS_WINNT
 
+#if CPPCORO_OS_WINNT
 void cppcoro::io_service::schedule_impl(schedule_operation* operation) noexcept
 {
-#if CPPCORO_OS_WINNT
 	const BOOL ok = ::PostQueuedCompletionStatus(
 		m_iocpHandle.handle(),
 		0,
@@ -533,8 +532,8 @@ void cppcoro::io_service::schedule_impl(schedule_operation* operation) noexcept
 			std::memory_order_release,
 			std::memory_order_acquire));
 	}
-#endif
 }
+#endif
 
 void cppcoro::io_service::try_reschedule_overflow_operations() noexcept
 {
@@ -678,6 +677,11 @@ bool cppcoro::io_service::try_process_one_event(bool waitForEvent)
 #else
     while (true)
     {
+        if (is_stop_requested())
+        {
+            return false;
+        }
+
         try_reschedule_overflow_operations();
         detail::lnx::io_message *message = nullptr;
 
@@ -709,6 +713,15 @@ bool cppcoro::io_service::try_process_one_event(bool waitForEvent)
         {
 			message->resume();
         }
+#if CPPCORO_USE_EPOLL
+		else if (message != nullptr && message->resume == nullptr)
+		{
+			std::scoped_lock lock{m_wakeUpMux};
+            std::erase_if(m_wakeUpMessages, [&message](detail::lnx::io_message &wakeup) {
+				return wakeup.fd == message->fd;
+			});
+		}
+#endif
 
         if (is_stop_requested())
         {
@@ -733,10 +746,11 @@ void cppcoro::io_service::post_wake_up_event() noexcept
 	static detail::lnx::io_message nop;
     assert(m_ioQueue.transaction(nop).nop().commit());
 #else
-	// FIXME: EPOLL backend uses evenfd that cannot be reused
-	auto nop = std::make_shared<detail::lnx::io_message>();
-	*nop = [nop = nop] {}; // keepalive until consumed
-    assert(m_ioQueue.transaction(*nop).nop().commit());
+	{
+		std::scoped_lock lock{m_wakeUpMux};
+		auto& nop = m_wakeUpMessages.emplace_back();
+		assert(m_ioQueue.transaction(nop).nop().commit());
+	}
 #endif
 }
 
