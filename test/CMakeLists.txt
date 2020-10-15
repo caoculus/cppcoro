@@ -37,12 +37,12 @@ set(tests
 	ipv6_endpoint_tests.cpp
 	static_thread_pool_tests.cpp
 	io_service_tests.cpp
+	file_tests.cpp
 )
 
 if(WIN32)
     list(APPEND tests
         scheduling_operator_tests.cpp
-        file_tests.cpp
         socket_tests.cpp
     )
 endif()

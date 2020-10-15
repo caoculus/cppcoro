@@ -6,17 +6,16 @@
 #include <cppcoro/file_write_operation.hpp>
 
 #if CPPCORO_OS_WINNT
-# ifndef WIN32_LEAN_AND_MEAN
-#  define WIN32_LEAN_AND_MEAN
-# endif
-# include <Windows.h>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
 
 bool cppcoro::file_write_operation_impl::try_start(
-	cppcoro::detail::win32_overlapped_operation_base& operation) noexcept
+	cppcoro::detail::io_operation_base& operation) noexcept
 {
 	const DWORD numberOfBytesToWrite =
-		m_byteCount <= 0xFFFFFFFF ?
-		static_cast<DWORD>(m_byteCount) : DWORD(0xFFFFFFFF);
+		m_byteCount <= 0xFFFFFFFF ? static_cast<DWORD>(m_byteCount) : DWORD(0xFFFFFFFF);
 
 	DWORD numberOfBytesWritten = 0;
 	BOOL ok = ::WriteFile(
@@ -45,9 +44,28 @@ bool cppcoro::file_write_operation_impl::try_start(
 }
 
 void cppcoro::file_write_operation_impl::cancel(
-	cppcoro::detail::win32_overlapped_operation_base& operation) noexcept
+	cppcoro::detail::io_operation_base& operation) noexcept
 {
 	(void)::CancelIoEx(m_fileHandle, operation.get_overlapped());
 }
 
-#endif // CPPCORO_OS_WINNT
+#elif CPPCORO_OS_LINUX
+
+bool cppcoro::file_write_operation_impl::try_start(
+	cppcoro::detail::io_operation_base& operation) noexcept
+{
+	const size_t numberOfBytesToWrite = m_byteCount <= std::numeric_limits<size_t>::max()
+		? m_byteCount
+		: std::numeric_limits<size_t>::max();
+	return operation.m_ioQueue.transaction(operation.m_message)
+		.write(m_fileHandle, m_buffer, numberOfBytesToWrite, operation.m_offset)
+		.commit();
+}
+
+void cppcoro::file_write_operation_impl::cancel(
+	cppcoro::detail::io_operation_base& operation) noexcept
+{
+	operation.m_ioQueue.transaction(operation.m_message).cancel().commit();
+}
+
+#endif  // CPPCORO_OS_WINNT

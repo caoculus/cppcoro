@@ -102,6 +102,14 @@ set(sources
 	spin_wait.cpp
 	spin_mutex.cpp
 	io_service.cpp
+	file.cpp
+	readable_file.cpp
+	writable_file.cpp
+	read_only_file.cpp
+	write_only_file.cpp
+	read_write_file.cpp
+	file_read_operation.cpp
+	file_write_operation.cpp
 )
 
 if(WIN32)
@@ -127,14 +135,6 @@ if(WIN32)
 
     set(win32Sources
         win32.cpp
-        file.cpp
-        readable_file.cpp
-        writable_file.cpp
-        read_only_file.cpp
-        write_only_file.cpp
-        read_write_file.cpp
-        file_read_operation.cpp
-        file_write_operation.cpp
         socket_helpers.cpp
         socket.cpp
         socket_accept_operation.cpp

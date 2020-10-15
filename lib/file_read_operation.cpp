@@ -12,7 +12,7 @@
 # include <Windows.h>
 
 bool cppcoro::file_read_operation_impl::try_start(
-	cppcoro::detail::win32_overlapped_operation_base& operation) noexcept
+	cppcoro::detail::io_operation_base& operation) noexcept
 {
 	const DWORD numberOfBytesToRead =
 		m_byteCount <= 0xFFFFFFFF ?
@@ -45,9 +45,29 @@ bool cppcoro::file_read_operation_impl::try_start(
 }
 
 void cppcoro::file_read_operation_impl::cancel(
-	cppcoro::detail::win32_overlapped_operation_base& operation) noexcept
+	cppcoro::detail::io_operation_base& operation) noexcept
 {
 	(void)::CancelIoEx(m_fileHandle, operation.get_overlapped());
+}
+
+#elif CPPCORO_OS_LINUX
+
+bool cppcoro::file_read_operation_impl::try_start(
+    cppcoro::detail::io_operation_base& operation) noexcept
+{
+    const size_t numberOfBytesToRead =
+        m_byteCount <= std::numeric_limits<size_t>::max() ?
+              m_byteCount : std::numeric_limits<size_t>::max();
+    return operation.m_ioQueue.transaction(operation.m_message)
+        .read(m_fileHandle, m_buffer, numberOfBytesToRead, operation.m_offset)
+        .commit();
+}
+
+void cppcoro::file_read_operation_impl::cancel(
+    cppcoro::detail::io_operation_base& operation) noexcept
+{
+	operation.m_ioQueue.transaction(operation.m_message)
+		.cancel().commit();
 }
 
 #endif // CPPCORO_OS_WINNT

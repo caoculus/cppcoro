@@ -14,6 +14,9 @@
 #else
 # include <cppcoro/detail/linux.hpp>
 # include <cppcoro/detail/linux_io_operation.hpp>
+#if CPPCORO_USE_EPOLL
+# include <vector>
+#endif
 #endif
 
 #include <optional>
