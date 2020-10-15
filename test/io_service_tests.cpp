@@ -73,6 +73,12 @@ TEST_CASE_FIXTURE(io_service_fixture_with_threads<2>, "multiple I/O threads serv
 {
 	std::atomic<int> completedCount = 0;
 
+#ifdef CPPCORO_TESTS_LIMITED_RESOURCES
+    constexpr int operations = 128;
+#else
+    constexpr int operations = 1000;
+#endif
+
 	auto runOnIoThread = [&]() -> cppcoro::task<>
 	{
 		co_await io_service().schedule();
@@ -81,7 +87,7 @@ TEST_CASE_FIXTURE(io_service_fixture_with_threads<2>, "multiple I/O threads serv
 
 	std::vector<cppcoro::task<>> tasks;
 	{
-		for (int i = 0; i < 1000; ++i)
+		for (int i = 0; i < operations; ++i)
 		{
 			tasks.emplace_back(runOnIoThread());
 		}
@@ -89,7 +95,7 @@ TEST_CASE_FIXTURE(io_service_fixture_with_threads<2>, "multiple I/O threads serv
 
 	cppcoro::sync_wait(cppcoro::when_all(std::move(tasks)));
 
-	CHECK(completedCount == 1000);
+	CHECK(completedCount == operations);
 }
 
 TEST_CASE("Multiple concurrent timers")

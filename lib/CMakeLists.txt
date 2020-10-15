@@ -144,6 +144,45 @@ if(WIN32)
         socket_recv_from_operation.cpp
     )
     list(APPEND sources ${win32Sources})
+else()
+	# assuming linux !
+
+	option(CPPCORO_USE_IO_RING "Enable io_ring backend" OFF)
+
+	set(linuxDetailIncludes
+		linux.hpp
+		linux_io_operation.hpp
+		)
+	if (CPPCORO_USE_IO_RING)
+		find_package(liburing REQUIRED)
+		list(APPEND libraries liburing::liburing)
+
+		list(APPEND linuxDetailIncludes
+			linux_uring_queue.hpp
+			)
+		list(APPEND defines
+			CPPCORO_USE_IO_RING=1
+			)
+		list(APPEND linuxSources
+			linux_uring_queue.cpp
+			io_service.cpp
+			file.cpp
+			readable_file.cpp
+			writable_file.cpp
+			read_only_file.cpp
+			write_only_file.cpp
+			read_write_file.cpp
+			file_read_operation.cpp
+			file_write_operation.cpp
+			)
+	endif()
+	list(TRANSFORM linuxDetailIncludes PREPEND "${PROJECT_SOURCE_DIR}/include/cppcoro/detail/")
+	list(APPEND detailIncludes ${linuxDetailIncludes})
+	list(APPEND linuxSources
+		linux.cpp
+		)
+	list(APPEND sources ${linuxSources})
+
 endif()
 
 add_library(cppcoro
@@ -158,9 +197,10 @@ target_include_directories(cppcoro PUBLIC
 	$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
 	$<INSTALL_INTERFACE:include>)
 target_compile_features(cppcoro PUBLIC cxx_std_20)
+target_compile_definitions(cppcoro PUBLIC ${defines})
 
 find_package(CppcoroCoroutines REQUIRED)
-target_link_libraries(cppcoro PUBLIC cppcoro::coroutines)
+target_link_libraries(cppcoro PUBLIC cppcoro::coroutines ${libraries})
 
 install(TARGETS cppcoro EXPORT cppcoroTargets
 	LIBRARY DESTINATION lib

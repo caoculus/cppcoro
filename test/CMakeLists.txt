@@ -5,6 +5,11 @@ include(${CMAKE_CURRENT_LIST_DIR}/doctest/doctest.cmake)
 
 find_package(Threads REQUIRED)
 
+option(CPPCORO_TESTS_LIMITED_RESOURCES "Use limited-resources testing parameters" OFF)
+if(CPPCORO_TESTS_LIMITED_RESOURCES)
+	add_definitions(-DCPPCORO_TESTS_LIMITED_RESOURCES=1)
+endif()
+
 add_library(tests-main SHARED
 	main.cpp
 	counted.cpp
@@ -46,6 +51,14 @@ if(WIN32)
         socket_tests.cpp
     )
 else()
+	# assuming linux !
+
+	if(CPPCORO_USE_IO_RING)
+		list(APPEND tests
+			file_tests.cpp
+			io_service_tests.cpp
+			)
+	endif()
 	# let more time for some tests
 	set(async_auto_reset_event_tests_TIMEOUT 60)
 endif()
