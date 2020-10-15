@@ -47,7 +47,7 @@ namespace cppcoro
 			file_buffering_mode bufferingMode);
 
 		detail::safe_handle m_fileHandle;
-#ifdef CPPCORO_OS_LINUX
+#if CPPCORO_OS_LINUX
 		io_service *m_ioService;
 #endif
 	};

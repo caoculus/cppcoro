@@ -15,6 +15,11 @@ add_library(tests-main SHARED
 	counted.cpp
 )
 target_link_libraries(tests-main PUBLIC cppcoro doctest::doctest Threads::Threads)
+if(WIN32)
+	target_compile_definitions(tests-main PUBLIC
+		DOCTEST_CONFIG_IMPLEMENTATION_IN_DLL=1
+		DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN=1)
+endif()
 
 set(tests
 	generator_tests.cpp
@@ -57,6 +62,7 @@ else()
 		list(APPEND tests
 			file_tests.cpp
 			io_service_tests.cpp
+			socket_tests.cpp
 			)
 	endif()
 	# let more time for some tests

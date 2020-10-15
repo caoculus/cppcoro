@@ -27,7 +27,7 @@ cppcoro::read_only_file cppcoro::read_only_file::open(
 		file_open_mode::open_existing,
 		shareMode,
 		bufferingMode));
-#ifdef CPPCORO_OS_LINUX
+#if CPPCORO_OS_LINUX
 	file.m_ioService = &ioService;
 #endif
 	return std::move(file);
