@@ -60,6 +60,7 @@ else()
 
 	if(CPPCORO_USE_IO_RING)
 		list(APPEND tests
+			scheduling_operator_tests.cpp
 			file_tests.cpp
 			io_service_tests.cpp
 			socket_tests.cpp
