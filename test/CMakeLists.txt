@@ -10,18 +10,11 @@ if(CPPCORO_TESTS_LIMITED_RESOURCES)
 	add_definitions(-DCPPCORO_TESTS_LIMITED_RESOURCES=1)
 endif()
 
-add_library(tests-main SHARED
+add_library(tests-main STATIC
 	main.cpp
 	counted.cpp
 )
 target_link_libraries(tests-main PUBLIC cppcoro doctest::doctest Threads::Threads)
-target_compile_definitions(tests-main PUBLIC
-	DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN=1)
-if(WIN32)
-	target_compile_definitions(tests-main PUBLIC
-		DOCTEST_CONFIG_IMPLEMENTATION_IN_DLL=1)
-	target_compile_definitions(tests-main PRIVATE CPPCORO_TEST_COMMON_EXPORTS=1)
-endif()
 
 set(tests
 	generator_tests.cpp

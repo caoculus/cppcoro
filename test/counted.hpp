@@ -6,19 +6,8 @@
 #define CPPCORO_TESTS_COUNTED_HPP_INCLUDED
 
 #include <iostream>
-#include <cppcoro/config.hpp>
 
-#if CPPCORO_OS_WINNT
-# ifdef CPPCORO_TEST_COMMON_EXPORTS
-#define CPPCORO_TEST_COMMON_EXPORTED __declspec(dllexport)
-# else
-#define CPPCORO_TEST_COMMON_EXPORTED __declspec(dllimport)
-# endif
-#else
-#define CPPCORO_TEST_COMMON_EXPORTED
-#endif
-
-struct CPPCORO_TEST_COMMON_EXPORTED counted
+struct counted
 {
 	static int default_construction_count;
 	static int copy_construction_count;
