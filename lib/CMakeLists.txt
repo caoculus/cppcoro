@@ -135,6 +135,7 @@ if(WIN32)
 			socket_recv_from_operation.cpp)
 
 		list(APPEND libraries Ws2_32 Mswsock Synchronization)
+		list(APPEND compile_options /EHsc)
 else()
 	# assuming linux !
 
@@ -207,6 +208,7 @@ target_include_directories(cppcoro PUBLIC
 	$<INSTALL_INTERFACE:include>)
 target_compile_features(cppcoro PUBLIC cxx_std_20)
 target_compile_definitions(cppcoro PUBLIC ${defines})
+target_compile_options(cppcoro PUBLIC ${compile_options})
 
 find_package(CppcoroCoroutines REQUIRED)
 target_link_libraries(cppcoro PUBLIC cppcoro::coroutines ${libraries})
