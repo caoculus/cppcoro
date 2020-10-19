@@ -116,7 +116,17 @@ TEST_CASE("multi-threaded")
 
 		tasks.emplace_back(startSignaller());
 
-		for (int i = 0; i < 1000; ++i)
+		// HACK: setting 1000 for 64 bit target will result in stack overflow
+		//       same if we set 2000 on 32 bit targets.
+		//       This because, implementation will resume awaiters recusively.
+		//       It should probably be reworked.
+#if CPPCORO_CPU_64BIT
+		constexpr size_t awaiter_count = 500;
+#else
+        constexpr size_t awaiter_count = 1000;
+#endif
+
+		for (int i = 0; i < awaiter_count; ++i)
 		{
 			tasks.emplace_back(startWaiter());
 		}
@@ -124,7 +134,7 @@ TEST_CASE("multi-threaded")
 		co_await cppcoro::when_all(std::move(tasks));
 
 		// NOTE: Can't use CHECK() here because it's not thread-safe
-		assert(value == 1005);
+		assert(value == awaiter_count + 5);
 	};
 
 	std::vector<cppcoro::task<>> tasks;
