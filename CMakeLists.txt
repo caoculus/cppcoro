@@ -17,7 +17,7 @@ export(EXPORT cppcoroTargets
   NAMESPACE cppcoro::)
 configure_file(cmake/cppcoroConfig.cmake
     "${PROJECT_BINARY_DIR}/cppcoro/cppcoroConfig.cmake"
-    COPYONLY)
+    @ONLY)
 
 set(config_package_location lib/cmake/cppcoro)
 install(DIRECTORY include
@@ -26,6 +26,11 @@ install(DIRECTORY include
 install(FILES cmake/FindCppcoroCoroutines.cmake
 	DESTINATION ${config_package_location}
 	COMPONENT Devel)
+if(CPPCORO_USE_IO_RING)
+	install(FILES cmake/Findliburing.cmake
+		DESTINATION ${config_package_location}
+		COMPONENT Devel)
+endif()
 install(EXPORT cppcoroTargets
   FILE cppcoroTargets.cmake
   NAMESPACE cppcoro::
