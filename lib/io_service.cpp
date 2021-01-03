@@ -10,6 +10,7 @@
 #include <cassert>
 #include <algorithm>
 #include <thread>
+#include <vector>
 
 #if CPPCORO_OS_WINNT
 # ifndef WIN32_LEAN_AND_MEAN
@@ -998,8 +999,7 @@ cppcoro::io_service::timed_schedule_operation::timed_schedule_operation(
 {
 #if CPPCORO_OS_LINUX
     m_cancellationRegistration.emplace(std::move(m_cancellationToken), [&service, this] {
-        m_message.result = -ECANCELED;
-        service.io_queue().transaction(m_message).timeout_remove().nop().commit();
+        service.io_queue().transaction(m_message).timeout_remove().commit();
     });
 #endif
 }
